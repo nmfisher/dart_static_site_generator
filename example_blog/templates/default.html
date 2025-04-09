@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }} | {{ site.title }}</title>
+    <meta name="description" content="{{ page.metadata.og:description }}">
+    <!-- Add more meta tags from site.metadata or page.metadata as needed -->
+    <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+    <header>
+        <h1><a href="/">{{ site.title }}</a></h1>
+        <p>{{ site.metadata.description }}</p>
+        <!-- Basic Navbar Example (customize based on your CSS/JS) -->
+        <nav>
+           <ul>
+              <!-- You'd typically loop through site.navbar.items here in a real template engine -->
+              <li><a href="/">Home</a></li>
+              <li><a href="/about">About</a></li>
+              <li><a href="/posts">Posts</a></li>
+           </ul>
+        </nav>
+    </header>
+
+    <main>
+        {{content}}
+    </main>
+
+    <footer>
+        <p>Copyright © {{ site.owner }}</p>
+    </footer>
+</body>
+</html>
