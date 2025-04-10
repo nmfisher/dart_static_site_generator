@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{% block title %}{{ page.title | default: 'Untitled Page' }}{% endblock %} - {{ site.title | default: 'My Website' }}</title>
+
+    {% comment %} --- Site-wide Meta (Iterate Map) --- {% endcomment %}
+    {% for item in site.metadata %}
+        <meta name="{{ item.key }}" content="{{ item.value | escape }}">
+    {% endfor %}
+
+    {% comment %} --- Page-specific Meta (Iterate Map) --- {% endcomment %}
+    {% for item in page.metadata %}
+        <meta name="{{ item.key }}" content="{{ item.value | escape }}">
+    {% endfor %}
+
+    <link rel="stylesheet" href="/assets/style.css">
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    {% render '_includes/header.liquid' %}
+    <main class="container">
+        {% block content %}
+            <h1>{{ page.title | default: "Page Title Missing" }}</h1>
+            {{{ content | default: "<p>Error: No content found for this page.</p>" }}}
+        {% endblock %}
+    </main>
+    {% render '_includes/footer.liquid' %}
+    {% block scripts %}{% endcomment %}
+</body>
+</html>

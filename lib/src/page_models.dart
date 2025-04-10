@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:markdown/markdown.dart' as md;
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
+// import 'package:intl/intl.dart';
 
 class PageModel {
   final String html;
@@ -32,25 +33,20 @@ class PageModel {
       this.date,
       this.isIndex = false}) {
     if (route.isEmpty && !isIndex) { // Allow empty route for potential root index
-      // It's better to enforce '/' for the root index explicitly
-       throw Exception("Route cannot be empty (source $source)");
+       throw ArgumentError.value(route, 'route', "Route cannot be empty (source $source)");
     }
      if (title.isEmpty) {
       print("Warning: Page title is empty for source: $source");
-      // Consider throwing an error if title is mandatory
     }
   }
 
-  ///
-  /// Parse a Markdown (.md) file.
-  ///
   factory PageModel.from(File file, Directory baseDir) {
     final filePath = file.path;
     final content = file.readAsStringSync();
     final parts = content.split('---');
 
     if (parts.length < 3 || !content.startsWith('---')) {
-      throw Exception(
+      throw FormatException(
           "Invalid frontmatter format in $filePath. Expected '---' delimiters.");
     }
 
@@ -61,48 +57,39 @@ class PageModel {
     try {
       doc = loadYaml(frontmatterContent);
       if (doc == null || doc is! YamlMap) {
-         throw Exception("Frontmatter is not a valid YAML map.");
+         throw FormatException("Frontmatter is not a valid YAML map in $filePath.");
       }
     } catch (e) {
-      throw Exception("Failed to parse YAML frontmatter in $filePath: $e\nContent:\n$frontmatterContent");
+      throw FormatException("Failed to parse YAML frontmatter in $filePath: $e\nContent:\n$frontmatterContent");
     }
-
 
     final layoutId = doc["layout"]?.toString();
-    // Default templateId to parent directory name, unless overridden
     final templateId = doc["template"]?.toString();
-
-    final title = doc["title"]?.toString() ?? p.basenameWithoutExtension(filePath); // Fallback title
-    if (title.isEmpty){
-        print("Warning: Determined title is empty for $filePath");
-    }
+    final title = doc["title"]?.toString() ?? p.basenameWithoutExtension(filePath);
 
     DateTime? date;
     if (doc["date"] != null) {
       try {
-        // Try parsing common formats
+        // Attempt parsing - consider using DateFormat for more formats
         date = DateTime.parse(doc["date"].toString());
+        // Example using intl (add dependency first):
+        // date = DateFormat('yyyy-MM-dd HH:mm:ss').parse(doc["date"].toString());
       } catch (err) {
-        print("Warning: Could not parse date '${doc["date"]}' in $filePath: $err");
+        print("Warning: Could not parse date '${doc["date"]}' in $filePath (expected ISO 8601 format): $err");
       }
     }
 
-    final html = md.markdownToHtml(markdownContent, inlineSyntaxes: [md.InlineHtmlSyntax()]); // Allow inline HTML
-    final plainText = html.replaceAll(RegExp(r'<[^>]*>'), ''); // Strip HTML tags
+    final html = md.markdownToHtml(markdownContent, inlineSyntaxes: [md.InlineHtmlSyntax()]);
+    final plainText = html.replaceAll(RegExp(r'<[^>]*>|\s{2,}'), ' ').trim(); // Strip tags and excessive whitespace
+    final blurb = plainText.substring(0, min(plainText.length, 200)).trim();
 
-    final normalizedText = plainText.replaceAll(RegExp(r'\s+'), ' '); // Normalize whitespace FIRST
-    final blurb = normalizedText.substring(0, min(normalizedText.length, 200)).trim(); // Calculate min/substring AFTER normalization
-
-    // Default metadata
      final metadata = <String, String>{
       "og:description": blurb,
-      "og:title": title.replaceAll('"', '"'), // Basic escaping
+      "og:title": title.replaceAll('"', '"'), // Use HTML entity for quotes
       "twitter:title": title.replaceAll('"', '"'),
       "twitter:description": blurb,
     };
 
-
-    // Add frontmatter metadata, overwriting defaults if necessary
     if (doc["meta"] != null && doc["meta"] is YamlMap) {
       try {
         for (final key in doc["meta"].keys) {
@@ -113,35 +100,38 @@ class PageModel {
       }
     }
 
-    // Determine the route/URL
     var route = doc["url"]?.toString() ?? doc["route"]?.toString();
 
     if (route == null) {
-      // Auto-generate route based on file path relative to baseDir
       final relativePath = p.relative(filePath, from: baseDir.path);
-      if (p.basename(filePath).toLowerCase() == "index.md") {
-        // /content/posts/index.md -> /posts
-        // /content/index.md -> /
-        route = p.dirname(relativePath);
-        // Handle root index.md
-        if (route == '.') route = '/';
-        else route = '/$route'; // Add leading slash
+      final pathSegments = p.split(p.withoutExtension(relativePath));
+
+      // Sanitize segments for URL safety (basic example: replace space with -, remove unsafe chars)
+      final sanitizedSegments = pathSegments.map((s) => s
+        .replaceAll(' ', '-')
+        .replaceAll(RegExp(r'[^\w\-\.~]'), '') // Keep word chars, -, ., ~, _
+        .toLowerCase() // Normalize to lowercase
+      ).toList();
+
+      if (sanitizedSegments.last.toLowerCase() == "index") {
+         sanitizedSegments.removeLast(); // Remove 'index' part
+         if (sanitizedSegments.isEmpty) {
+            route = '/'; // Root index
+         } else {
+            route = '/${sanitizedSegments.join('/')}';
+         }
       } else {
-        // /content/posts/my-post.md -> /posts/my-post
-         route = '/${p.withoutExtension(relativePath)}';
+         route = '/${sanitizedSegments.join('/')}';
       }
-      // Normalize path separators
-      route = route.replaceAll(r'\', '/');
     }
 
-     // Ensure leading slash, remove trailing slash if not root
+    // Ensure leading slash, remove trailing slash if not root
     if (!route.startsWith('/')) {
       route = '/$route';
     }
     if (route != '/' && route.endsWith('/')) {
       route = route.substring(0, route.length - 1);
     }
-
 
     print("Parsed ${file.path} -> route: $route");
 
@@ -156,31 +146,27 @@ class PageModel {
         blurb: blurb,
         markdown: markdownContent,
         metadata: metadata,
-        draft: doc["published"] != true // Default to draft if 'published: true' is not set
-        );
+        draft: doc["published"] != true
+    );
   }
 
-  ///
-  /// Creates a PageModel representing the "index" for a number of sub-pages (e.g. the "Articles" page for a blog)
-  /// Note: This specific implementation isn't used by the main build loop below,
-  /// but could be used for custom index generation logic.
-  ///
   factory PageModel.index(
       Directory directory, Directory baseDirectory, List<PageModel> children) {
-    var fullpath = '/${p.relative(directory.path, from: baseDirectory.path)}'.replaceAll(r'\', '/');
-     if (fullpath != '/' && fullpath.endsWith('/')) {
+    var relativePath = p.relative(directory.path, from: baseDirectory.path);
+    var pathSegments = p.split(relativePath).map((s) => s.toLowerCase()).toList();
+
+    var fullpath = '/${pathSegments.join('/')}';
+    if (fullpath != '/' && fullpath.endsWith('/')) {
       fullpath = fullpath.substring(0, fullpath.length - 1);
     }
-     if (fullpath == '/.') { // Handle root case
+    if (fullpath == '/.') {
         fullpath = '/';
-     }
-
+    }
 
     var dirname = p.basename(directory.path);
-    var title = dirname.isNotEmpty ? dirname[0].toUpperCase() + dirname.substring(1) : 'Index'; // Default title
+    var title = dirname.isNotEmpty ? _capitalize(dirname) : 'Index';
 
-    var indexConfigFile = File(p.join(directory.path, "config.yaml")); // Look for config.yaml for index page overrides
-
+    var indexConfigFile = File(p.join(directory.path, "config.yaml"));
     String? layoutId;
     Map<String, String> metadata = {};
 
@@ -188,7 +174,7 @@ class PageModel {
       try {
         var indexConfig = loadYaml(indexConfigFile.readAsStringSync()) as YamlMap;
         title = indexConfig["title"]?.toString() ?? title;
-        layoutId = indexConfig["layout"]?.toString(); // Allow specifying layout for index
+        layoutId = indexConfig["layout"]?.toString();
          if (indexConfig["meta"] != null && indexConfig["meta"] is YamlMap) {
            for (final key in indexConfig["meta"].keys) {
              metadata[key.toString()] = indexConfig["meta"][key]?.toString() ?? '';
@@ -199,39 +185,40 @@ class PageModel {
       }
     }
 
-    // Provide default metadata if needed
     metadata.putIfAbsent("og:title", () => title);
     metadata.putIfAbsent("og:description", () => "Index of $title");
 
-
     return PageIndexPageModel(
-        html: "", // No direct HTML content for generated index
-        source: directory.path, // Source is the directory itself
+        html: "", // Index pages typically generate HTML via layout
+        source: directory.path,
         title: title,
         route: fullpath,
         children: children,
-        layoutId: layoutId, // Use layout from config if available
-        metadata: metadata, blurb: '');
+        layoutId: layoutId ?? 'list', // Default layout for indexes
+        metadata: metadata,
+        blurb: "Index page for $title",
+        draft: false, // Index pages are usually not drafts
+        isIndex: true);
   }
 
-   // Helper to convert PageModel data to a Map for template rendering
-   Map<String, dynamic> toMap() {
-     return {
-       'html': html, // The core HTML content generated from markdown
-       'layoutId': layoutId,
-       'templateId': templateId,
-       'title': title,
-       'route': route,
-       'metadata': metadata,
-       // 'markdown': markdown, // Usually not needed in template
-       'date': date?.toIso8601String(), // Format date for template
-       'blurb': blurb,
-       'source': source,
-       'draft': draft,
-       'isIndex': isIndex,
-       // Add other fields as needed
-     };
-   }
+      Map<String, dynamic> toMap() {
+    return {
+      'html': html,
+      'layoutId': layoutId,
+      'templateId': templateId,
+      'title': title,
+      'route': route,
+      // CHANGE: Pass metadata directly as a Map
+      'metadata': metadata,
+      'date': date?.toIso8601String(),
+      'blurb': blurb,
+      'source': source,
+      'draft': draft,
+      'isIndex': isIndex,
+    };
+  }
+
+   static String _capitalize(String s) => s.isEmpty ? '' : s[0].toUpperCase() + s.substring(1);
 }
 
 class PageIndexPageModel extends PageModel {
@@ -242,22 +229,31 @@ class PageIndexPageModel extends PageModel {
       required super.source,
       required super.title,
       required super.route,
-      required super.html, // Usually empty
+      required super.html,
       required super.metadata,
+      required super.blurb,
       super.markdown = "",
       super.layoutId,
-      super.templateId = "index", // Default template for index pages
+      super.templateId = "index",
       super.draft = false,
-      super.isIndex = true, required super.blurb}) {}
+      super.isIndex = true,
+      super.date}) {}
 
 
-   @override
+     @override
    Map<String, dynamic> toMap() {
-     final map = super.toMap();
-     // Add children data, maybe sorted or filtered
-     map['children'] = children
-          .where((c) => !c.draft) // Example: only show published children
-          .map((c) => c.toMap()) // Convert children to maps too
+     final map = super.toMap(); // Calls the modified PageModel.toMap()
+     // Add children data, maybe sorted by date (descending)
+     final sortedChildren = List<PageModel>.from(children)
+        ..sort((a, b) {
+            if (a.date == null && b.date == null) return 0;
+            if (a.date == null) return 1; // Put pages without dates last
+            if (b.date == null) return -1;
+            return b.date!.compareTo(a.date!); // Newest first
+        });
+     map['children'] = sortedChildren
+          .where((c) => !c.draft)
+          .map((c) => c.toMap())
           .toList();
      return map;
    }

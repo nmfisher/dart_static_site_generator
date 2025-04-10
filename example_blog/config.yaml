@@ -1,6 +1,6 @@
 title: My Awesome Blog
 owner: Jane Doe
-# baseUrl: https://example.com # Needed for sitemap generation if used
+baseUrl: https://example.com # Needed for sitemap generation if used
 
 navbar:
   classes: "navbar navbar-expand-lg navbar-light bg-light"

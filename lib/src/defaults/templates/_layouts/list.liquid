@@ -1,0 +1,44 @@
+{% comment %} --- Inherit from the default layout --- {% endcomment %}
+{% layout '_layouts/default.liquid' %}
+
+{% comment %} --- Override the title block --- {% endcomment %}
+{% block title %}{{ page.title | default: "Index" }}{% endblock %}
+
+{% comment %} --- Override the main content block --- {% endcomment %}
+{% block content %}
+    <article class="page-list">
+        <header>
+            <h1>{{ page.title | default: "Index" }}</h1>
+            {% if page.blurb %}
+            <p class="page-description">{{ page.blurb }}</p>
+            {% endif %}
+        </header>
+
+        <ul class="list-items">
+            {% comment %} --- Loop through child pages (provided by PageIndexPageModel) --- {% endcomment %}
+            {% for child_page in page.children %}
+                <li class="list-item">
+                    <h2><a href="{{ child_page.route }}">{{ child_page.title }}</a></h2>
+                    {% if child_page.date %}
+                        <p class="item-meta">
+                            <time datetime="{{ child_page.date }}">
+                                {{ child_page.date | date: "%B %d, %Y" }} {% comment %} Example date format {% endcomment %}
+                            </time>
+                        </p>
+                    {% endif %}
+                    {% if child_page.blurb %}
+                        <p class="item-blurb">{{ child_page.blurb | escape }}</p>
+                    {% endif %}
+                     <p><a href="{{ child_page.route }}" class="read-more">Read More →</a></p>
+                </li>
+            {% else %}
+                <li>No items found.</li>
+            {% endfor %}
+        </ul>
+
+        {% comment %} --- Optional: Add pagination controls here --- {% endcomment %}
+
+    </article>
+{% endblock %}
+
+{% comment %} --- We don't need to override head_extra or scripts unless necessary --- {% endcomment %}
