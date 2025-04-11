@@ -1,10 +1,7 @@
-{% comment %} --- Inherit from the default layout --- {% endcomment %}
 {% layout '_layouts/default.liquid' %}
 
-{% comment %} --- Override the title block --- {% endcomment %}
 {% block title %}{{ page.title | default: "Index" }}{% endblock %}
 
-{% comment %} --- Override the main content block --- {% endcomment %}
 {% block content %}
     <article class="page-list">
         <header>
@@ -15,7 +12,6 @@
         </header>
 
         <ul class="list-items">
-            {% comment %} --- Loop through child pages (provided by PageIndexPageModel) --- {% endcomment %}
             {% for child_page in page.children %}
                 <li class="list-item">
                     <h2><a href="{{ child_page.route }}">{{ child_page.title }}</a></h2>
@@ -35,10 +31,5 @@
                 <li>No items found.</li>
             {% endfor %}
         </ul>
-
-        {% comment %} --- Optional: Add pagination controls here --- {% endcomment %}
-
     </article>
 {% endblock %}
-
-{% comment %} --- We don't need to override head_extra or scripts unless necessary --- {% endcomment %}

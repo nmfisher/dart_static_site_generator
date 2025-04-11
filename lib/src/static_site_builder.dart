@@ -17,7 +17,7 @@ class StaticSiteBuilder {
   TemplateRenderer? _renderer;
   int parseErrors = 0;
   int renderErrors = 0;
-  
+
   // FileSystem abstraction for testability
   final FileSystem fileSystem;
 
@@ -27,21 +27,20 @@ class StaticSiteBuilder {
     this.fileSystem = const LocalFileSystem(),
     TemplateRenderer? renderer,
   }) : _injectedRenderer = renderer;
-  
+
   // Getter for the renderer
   TemplateRenderer get renderer {
     if (_renderer != null) return _renderer!;
     if (_injectedRenderer != null) return _injectedRenderer!;
-    throw StateError('Renderer not initialized. Call setupRenderer() or provide a renderer in the constructor.');
+    throw StateError(
+        'Renderer not initialized. Call setupRenderer() or provide a renderer in the constructor.');
   }
-  
-  // Method to set up the renderer separately
+
   void setupRenderer(Root templateRoot) {
     _renderer = TemplateRenderer(templateRoot);
   }
 
   Future<void> build() async {
-    print('Starting build process...');
     print('Input directory: ${pathlib.absolute(inputDir)}');
     print('Output directory: ${pathlib.absolute(outputDir)}');
 
@@ -50,9 +49,12 @@ class StaticSiteBuilder {
     await _cleanAndCreateOutputDir(outputDirectory);
     await _parseConfig();
     await _setupTemplateRoot();
-    
-    // Initialize the renderer if not injected
+
     if (_injectedRenderer == null && _renderer == null) {
+      if (_templateRoot == null) {
+        throw StateError(
+            'Template root was not initialized successfully before setting up renderer.');
+      }
       setupRenderer(_templateRoot!);
     }
 
@@ -65,10 +67,11 @@ class StaticSiteBuilder {
 
     await _copyAssets();
 
-    if (siteConfig.baseUrl != null) {
+    if (siteConfig.baseUrl != null && siteConfig.baseUrl!.isNotEmpty) {
       await _generateSitemap(pages);
     } else {
-      print('\nSkipping sitemap generation: baseUrl not set in config.yaml');
+      print(
+          '\nSkipping sitemap generation: baseUrl not set or empty in config.yaml');
     }
   }
 
@@ -111,15 +114,16 @@ class StaticSiteBuilder {
     print('\nChecking for user templates directory: $userTemplatesDirPath');
     if (await userTemplatesDir.exists()) {
       print('User templates found. Using: $userTemplatesDirPath');
-      primaryRoot =
-          FileSystemRoot(userTemplatesDirPath, fileSystem: fileSystem as LocalFileSystem);
+      primaryRoot = FileSystemRoot(userTemplatesDirPath,
+          fileSystem:
+              fileSystem); // Correct: MemoryFileSystem for user templates
     } else {
       print(
           'User templates directory not found. Will rely on bundled defaults.');
-      primaryRoot = MapRoot({});
+      primaryRoot = MapRoot({}); 
     }
 
-    Root fallbackRoot; 
+    Root fallbackRoot;
     try {
       final packageUri =
           Uri.parse('package:blog_builder/src/defaults/templates/');
@@ -130,14 +134,27 @@ class StaticSiteBuilder {
             "Warning: Could not resolve package URI for bundled templates ($packageUri). Fallback templates unavailable.");
         fallbackRoot = MapRoot({});
       } else {
-        final bundledTemplatesPath = pathlib.fromUri(resolvedUri);
+        // Ensure the URI scheme is file-based before converting
+        if (!resolvedUri.isScheme('file')) {
+          throw Exception(
+              "Resolved package URI is not a file URI: $resolvedUri");
+        }
+        final bundledTemplatesPath =
+            pathlib.fromUri(resolvedUri); // Use pathlib.fromUri
         print('Located bundled default templates at: $bundledTemplatesPath');
-        if (await fileSystem.directory(bundledTemplatesPath).exists()) {
+
+        // IMPORTANT: Check existence using LocalFileSystem explicitly
+        final realBundledDir =
+            const LocalFileSystem().directory(bundledTemplatesPath);
+        if (await realBundledDir.exists()) {
+          // Use await with LocalFileSystem
+          // Explicitly use LocalFileSystem for the fallback root
           fallbackRoot = FileSystemRoot(bundledTemplatesPath,
-              fileSystem: fileSystem as LocalFileSystem);
+              fileSystem:
+                  const LocalFileSystem()); // Correct: LocalFileSystem for real files
         } else {
           print(
-              "Warning: Bundled templates directory does not exist at resolved path: $bundledTemplatesPath");
+              "Warning: Bundled templates directory (checked via LocalFileSystem) does not exist at resolved path: $bundledTemplatesPath");
           fallbackRoot = MapRoot({});
         }
       }
@@ -150,15 +167,25 @@ class StaticSiteBuilder {
     _templateRoot = FallbackRoot(primaryRoot, fallbackRoot);
     print('Template root configured with fallback support.');
 
+    // Check if the essential default layout can be resolved (this seems to work)
     final defaultLayoutPath = '_layouts/default.liquid'.replaceAll(r'\', '/');
     try {
+      // Use resolve, not resolveAsync, maybe async timing issue? (Unlikely but try)
+      _templateRoot?.resolve(defaultLayoutPath);
+      print(
+          "Successfully resolved '$defaultLayoutPath' via template root (sync check).");
+      // Try async again for good measure, as renderer uses it
       await _templateRoot?.resolveAsync(defaultLayoutPath);
+      print(
+          "Successfully resolved '$defaultLayoutPath' via template root (async check).");
     } on Exception catch (e) {
+      // Catch specific Exception type
       print(
-          "Warning: Critical template '$defaultLayoutPath' not found in user templates or bundled defaults. Rendering might fail. Error: $e");
+          "Warning: Critical template '$defaultLayoutPath' not found in user templates or bundled defaults during setup check. Rendering might fail. Error: $e");
     } catch (e) {
+      // Catch any other error
       print(
-          "Warning: Unexpected error checking for default layout '$defaultLayoutPath': $e");
+          "Warning: Unexpected error checking for default layout '$defaultLayoutPath' during setup: $e");
     }
   }
 
@@ -215,8 +242,10 @@ class StaticSiteBuilder {
     print('\nGenerating index page models...');
     int indexPagesGenerated = 0;
 
+    // Keep track of routes for which an index page (manual or generated) exists
     final Set<String> generatedIndexRoutes = {};
     for (final page in pages) {
+      // Identify manually created index pages (index.md or route: /)
       if (page.route == '/' ||
           pathlib.basenameWithoutExtension(page.source).toLowerCase() ==
               'index') {
@@ -240,34 +269,45 @@ class StaticSiteBuilder {
       return;
     }
 
+    // Process contentDir itself first, then subdirectories
     final allDirs = [contentDir, ...subDirs];
 
     for (final dir in allDirs) {
+      // Calculate the route path for this directory
       final relativeDirPath = pathlib.relative(dir.path, from: contentDir.path);
+      // Handle root directory case and normalize slashes
       final routePath =
-          '/${relativeDirPath == '.' ? '' : relativeDirPath.replaceAll(r'\', '/')}';
+          '/${relativeDirPath == '.' ? '' : relativeDirPath.replaceAll(pathlib.separator, '/')}';
 
+      // Skip if an index page for this route already exists (manual or previously generated)
       if (generatedIndexRoutes.contains(routePath)) {
         continue;
       }
 
+      // Find non-index pages directly within this directory
       final dirPages = pages.where((p) {
         final pageSourceDir = pathlib.dirname(p.source);
+        // Ensure we only consider pages directly in this directory, not subdirs
         return pageSourceDir == dir.path && !p.isIndex;
       }).toList();
 
+      // Generate an index only if there are child pages in this specific directory
       if (dirPages.isNotEmpty) {
         print(
             '  -> Generating index model for directory: ${dir.path} (route: $routePath)');
         try {
           final indexPage = PageModel.index(dir, contentDir, dirPages);
+
+          // Double-check route collision before adding
           if (!generatedIndexRoutes.contains(indexPage.route)) {
             pages.add(indexPage);
-            generatedIndexRoutes.add(indexPage.route);
+            generatedIndexRoutes
+                .add(indexPage.route); // Mark this route as having an index
             indexPagesGenerated++;
             print(
                 '    -> Added index page model for route: ${indexPage.route}');
           } else {
+            // This should ideally not happen due to the check above, but safeguard anyway
             print(
                 '    -> Skipping add - index model for route ${indexPage.route} was already generated.');
           }
@@ -294,33 +334,27 @@ class StaticSiteBuilder {
 
     pages.sort((a, b) => a.route.compareTo(b.route));
 
-    if (_templateRoot == null && _injectedRenderer == null) {
-      throw Exception("Template root is not configured. Cannot render pages.");
+    if (_renderer == null && _injectedRenderer == null) {
+      throw StateError("Renderer is not configured. Cannot render pages.");
     }
 
     for (final page in pages) {
       final layoutName = page.layoutId ?? (page.isIndex ? 'list' : 'default');
-      final layoutPath = '_layouts/$layoutName.liquid'.replaceAll(r'\', '/');
-
-      print('Rendering: ${page.route} (Source: ${pathlib.relative(page.source, from: inputDir)}) using layout "$layoutPath"');
-
+      
       try {
-        // Use the renderer to render the page
         final renderedContent = await renderer.renderPageWithSiteConfig(
-          page, 
-          siteConfig
+            page, siteConfig, layoutName: layoutName
         );
-        
-        // Write the rendered content to a file
+
         await _writeOutputFile(page, renderedContent);
       } catch (e, stackTrace) {
         renderErrors++;
         print('--------------------------');
         print('Error rendering page: ${page.source}');
         print('Route: ${page.route}');
-        print('Layout used: $layoutName');
+        print('Layout used: $layoutName'); 
         print('Error: $e');
-        print(stackTrace);
+        print('Stack Trace:\n$stackTrace');
         print('--------------------------');
       }
     }
@@ -331,29 +365,38 @@ class StaticSiteBuilder {
   }
 
   Future<void> _writeOutputFile(PageModel page, String renderedContent) async {
+    // Convert route to relative file path
+    // e.g., "/" -> "index.html"
+    // e.g., "/about" -> "about/index.html"
+    // e.g., "/posts/my-post" -> "posts/my-post/index.html"
     String relativePath =
         page.route.startsWith('/') ? page.route.substring(1) : page.route;
     String outputPath;
     if (page.route == '/') {
+      // Root index page
       outputPath = pathlib.join(outputDir, 'index.html');
     } else {
+      // Other pages go into their own directory with an index.html
       outputPath = pathlib.join(outputDir, relativePath, 'index.html');
     }
 
+    // Normalize the path for the current OS
     final outputFilePath = pathlib.normalize(outputPath);
     final outputDirectoryPath = pathlib.dirname(outputFilePath);
     final outputDirectory = fileSystem.directory(outputDirectoryPath);
 
     try {
+      // Ensure the target directory exists
       if (!await outputDirectory.exists()) {
         await outputDirectory.create(recursive: true);
       }
+      // Write the file using the injected filesystem
       final outputFile = fileSystem.file(outputFilePath);
       await outputFile.writeAsString(renderedContent);
       print(
           '  -> Generated: ${pathlib.relative(outputFilePath, from: fileSystem.currentDirectory.path)}');
     } catch (e) {
-      renderErrors++;
+      renderErrors++; // Increment render error count if writing fails too
       print('  -> Error writing output file $outputFilePath: $e');
     }
   }
@@ -374,13 +417,19 @@ class StaticSiteBuilder {
 
     print('Copying assets from $assetsDirPath to $outputAssetsDirPath...');
 
-    if (!await outputAssetsDir.exists()) {
-      await outputAssetsDir.create(recursive: true);
+    try {
+      if (!await outputAssetsDir.exists()) {
+        await outputAssetsDir.create(recursive: true);
+      }
+      await _copyDirectory(assetsDir, outputAssetsDir);
+      print('Assets copied successfully.');
+    } catch (e) {
+      print('Error during asset copy: $e');
+      // Decide if this should be fatal or just a warning
     }
-    await _copyDirectory(assetsDir, outputAssetsDir);
-    print('Assets copied successfully.');
   }
 
+  // Recursive directory copy helper using the injected fileSystem
   Future<void> _copyDirectory(Directory source, Directory destination) async {
     await for (final entity
         in source.list(recursive: false, followLinks: false)) {
@@ -388,15 +437,18 @@ class StaticSiteBuilder {
           pathlib.join(destination.path, pathlib.basename(entity.path));
       if (entity is File) {
         try {
+          // Use the filesystem's copy method
           await entity.copy(newPath);
         } catch (e) {
           print(
               '  Warning: Failed to copy file ${entity.path} to $newPath: $e');
         }
       } else if (entity is Directory) {
+        // Create the destination subdirectory using the filesystem
         final newDir = fileSystem.directory(newPath);
         try {
           await newDir.create(recursive: true);
+          // Recurse into the subdirectory
           await _copyDirectory(entity, newDir);
         } catch (e) {
           print(
@@ -406,6 +458,7 @@ class StaticSiteBuilder {
     }
   }
 
+  // Helper to find markdown files recursively using the injected filesystem
   Future<List<File>> _findMarkdownFiles(Directory dir) async {
     final List<File> results = [];
     try {
@@ -418,28 +471,31 @@ class StaticSiteBuilder {
         }
       }
     } catch (e) {
-      throw Exception("Error reading content directory ${dir.path} : $e");
+      // Make error more specific
+      throw Exception("Error searching for markdown files in ${dir.path}: $e");
     }
     return results;
   }
 
+  // Generates the sitemap using the SitemapGenerator and the injected filesystem
   Future<void> _generateSitemap(List<PageModel> pages) async {
     print('\nGenerating sitemap...');
     final sitemapFile = pathlib.join(outputDir, 'sitemap.xml');
     try {
-      if (siteConfig.baseUrl == null || siteConfig.baseUrl!.isEmpty) {
-        print(
-            "Warning: Cannot generate sitemap. 'baseUrl' is missing in config.yaml");
-        return;
-      }
-      SitemapGenerator.generateFromPageModels(
-        pages,
+      // Base URL check moved to build() method
+      // Make the call async and pass the fileSystem
+      await SitemapGenerator.generateFromPageModels(
+        pages
+            .where((p) => !p.draft)
+            .toList(), // Ensure only non-drafts are included
         siteConfig.baseUrl!,
         outFile: sitemapFile,
+        fileSystem: fileSystem, // Pass the builder's filesystem
       );
-      print('Sitemap generated successfully at $sitemapFile');
+      // Success message handled inside SitemapGenerator
     } catch (e) {
-      print('Error generating sitemap: $e');
+      // Error message handled inside SitemapGenerator, just re-log here if needed
+      print('Error occurred during sitemap generation step: $e');
     }
   }
 }

@@ -1,16 +1,12 @@
 import 'dart:io';
 import 'package:blog_builder/blog_builder.dart';
-import 'package:file/file.dart';
-import 'package:file/local.dart';
 import 'package:xml/xml.dart';
 
 class SitemapGenerator {
 
 
   // Example alternative: Generate using PageModel objects
-   static Future<void> generateFromPageModels(List<PageModel> pages, String host, {
-     required String outFile,
-     FileSystem fileSystem = const LocalFileSystem()}) async {
+   static void generateFromPageModels(List<PageModel> pages, String host, { String outFile = "build/sitemap.xml"}) {
      _generateInternal(
         pages
           .where((p) => !p.draft) // Only include non-draft pages
@@ -19,14 +15,13 @@ class SitemapGenerator {
              lastmod: p.date ?? DateTime.now(), // Use page date or fallback
              priority: _calculatePriority(p.route)
           )).toList(),
-        outFile,
-        fileSystem
+        outFile
      );
    }
 
 
   // Internal generation logic
-  static Future<void> _generateInternal(List<_SitemapEntry> entries, String outFile, FileSystem fileSystem) async {
+  static void _generateInternal(List<_SitemapEntry> entries, String outFile) {
       XmlElement urlset = XmlElement(
       XmlName('urlset'),
       [
@@ -61,12 +56,12 @@ class SitemapGenerator {
     var document = XmlDocument([urlset]);
 
     try {
-       final file = fileSystem.file(outFile);
+       final file = File(outFile);
        // Ensure the directory exists
-       if (!await file.parent.exists()) { // Use async exists with MemoryFileSystem
-          await file.parent.create(recursive: true); // Use async create
+       if (!file.parent.existsSync()) {
+          file.parent.createSync(recursive: true);
        }
-       await file.writeAsString(document.toXmlString(pretty: true, indent: '  ')); // Use async write
+       file.writeAsStringSync(document.toXmlString(pretty: true, indent: '  '));
        print('Sitemap generated successfully at $outFile');
     } catch (e) {
        print('Error writing sitemap file $outFile: $e');

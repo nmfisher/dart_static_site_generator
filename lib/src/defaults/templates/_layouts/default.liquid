@@ -4,30 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    {% comment %} --- Title --- {% endcomment %}
+
     <title>{% block title %}{{ page.title | default: 'Untitled Page' }}{% endblock %} - {{ site.title | default: 'My Website' }}</title>
 
-    {% comment %} --- Site-wide Meta (Iterate Map) --- {% endcomment %}
-    {% for item in site.metadata %}
-        <meta name="{{ item.key }}" content="{{ item.value | escape }}">
-    {% endfor %}
+    {% comment %} In _layouts/default.liquid {% endcomment %}
 
-    {% comment %} --- Page-specific Meta (Iterate Map) --- {% endcomment %}
-    {% for item in page.metadata %}
-        <meta name="{{ item.key }}" content="{{ item.value | escape }}">
-    {% endfor %}
+    {% comment %} --- Site-wide Meta --- {% endcomment %}
+    <meta name="description" content="{{ site.metadata.description | escape }}">
 
+    {% comment %} --- Page-specific Meta --- {% endcomment %}
+
+    {% comment %} --- Link to CSS (assuming assets folder at root) --- {% endcomment %}
     <link rel="stylesheet" href="/assets/style.css">
+
+    {% comment %} --- Allow adding extra head elements from child layouts --- {% endcomment %}
     {% block head_extra %}{% endblock %}
+
 </head>
 <body>
+
+    {% comment %} --- Include Header Partial --- {% endcomment %}
     {% render '_includes/header.liquid' %}
+
     <main class="container">
+        {% comment %} --- Main Content Block ---
+             This is where the rendered Markdown ({{{ page.html }}}) via the
+             calling code's dynamic template will be injected by the layout tag.
+             Child layouts (like post.liquid or list.liquid) override this block.
+        {% endcomment %}
         {% block content %}
             <h1>{{ page.title | default: "Page Title Missing" }}</h1>
-            {{{ content | default: "<p>Error: No content found for this page.</p>" }}}
+            {{{ page.html | default: "<p>Error: No content found for this page.</p>" }}}
         {% endblock %}
     </main>
+
+    {% comment %} --- Include Footer Partial --- {% endcomment %}
     {% render '_includes/footer.liquid' %}
-    {% block scripts %}{% endcomment %}
+
+    {% comment %} --- Optional: Link to JS --- {% endcomment %}
+    {% block scripts %}
+        {% comment %} <script src="/assets/script.js"></script> {% endcomment %}
+    {% endblock %}
+
 </body>
 </html>

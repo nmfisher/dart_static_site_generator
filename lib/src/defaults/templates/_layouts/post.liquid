@@ -1,10 +1,7 @@
-{% comment %} --- Inherit from the default layout --- {% endcomment %}
 {% layout '_layouts/default.liquid' %}
 
-{% comment %} --- Override the title block --- {% endcomment %}
 {% block title %}{{ page.title | default: "Post Title Missing" }}{% endblock %}
 
-{% comment %} --- Override the main content block --- {% endcomment %}
 {% block content %}
     <article class="post">
         <header class="post-header">
@@ -19,13 +16,8 @@
         </header>
 
         <div class="post-content">
-            {% comment %} Use the 'content' variable passed in renderData (which is page.html) {% endcomment %}
             {{{ content | default: "<p>Error: No content found for this page.</p>" }}}
         </div>
 
-        {% comment %} Optional: Add post-specific footer elements here {% endcomment %}
-
     </article>
 {% endblock %}
-
-{% comment %} Remove original HTML structure as it's inherited now {% endcomment %}

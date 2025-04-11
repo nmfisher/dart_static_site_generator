@@ -1,21 +1,17 @@
-// lib/src/renderer.dart
 import 'dart:async';
 import 'package:liquify/liquify.dart';
-import 'package:blog_builder/blog_builder.dart'; // Assuming ConfigModel is here
-import 'package:blog_builder/src/config_models.dart'; // Ensure ConfigModel is accessible
+import 'package:blog_builder/blog_builder.dart';
 
 class TemplateRenderer {
   final Root templateRoot;
 
   TemplateRenderer(this.templateRoot);
 
-  /// Resolves a layout template path
   String resolveLayoutPath(String? layoutId, bool isIndex) {
     final layoutName = layoutId ?? (isIndex ? 'list' : 'default');
     return '_layouts/$layoutName.liquid'.replaceAll(r'\', '/');
   }
 
-  /// Renders a page using the specified layout
   Future<String> renderPage(PageModel page, {String? layoutName}) async {
     final layoutPath =
         resolveLayoutPath(layoutName ?? page.layoutId, page.isIndex);
@@ -28,13 +24,12 @@ class TemplateRenderer {
     return await _renderWithTemplate(layoutPath, renderData);
   }
 
-  /// Renders a page with site configuration data included
   Future<String> renderPageWithSiteConfig(
       PageModel page, ConfigModel siteConfig,
       {String? layoutName}) async {
     final layoutPath =
         resolveLayoutPath(layoutName ?? page.layoutId, page.isIndex);
-
+    print("Resolved layoutPath : $layoutPath");
     final Map<String, dynamic> renderData = {
       'site': siteConfig.toMap(),
       'page': page.toMap(),
@@ -66,11 +61,9 @@ class TemplateRenderer {
 
       return renderedContent;
     } catch (e, s) {
-      // Capture stack trace for better debugging
       print("Error rendering template '$layoutPath'. Exception: $e");
       print("Stack trace:\n$s");
-      // Re-throw the wrapped exception to keep test expectations consistent for now
-      throw Exception("Error rendering template '$layoutPath': $e");
+      rethrow;
     }
   }
 }
