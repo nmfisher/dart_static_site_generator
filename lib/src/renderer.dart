@@ -42,6 +42,12 @@ class TemplateRenderer {
   Future<String> _renderWithTemplate(
       String layoutPath, Map<String, dynamic> renderData) async {
     try {
+         // --- DEBUG ---
+    if (renderData.containsKey('page')) {
+       print("DEBUG: Page data being passed to template $layoutPath:");
+       print(renderData['page']); // Print the whole page map
+    }
+    
       final layoutSource = await templateRoot.resolveAsync(layoutPath);
       if (layoutSource.content.trim().isEmpty) {
         throw Exception("Layout template is empty: $layoutPath");

@@ -29,13 +29,13 @@
 
     <main class="container">
         {% comment %} --- Main Content Block ---
-             This is where the rendered Markdown ({{{ page.html }}}) via the
+             This is where the rendered Markdown ({{ page.html }}) via the
              calling code's dynamic template will be injected by the layout tag.
              Child layouts (like post.liquid or list.liquid) override this block.
         {% endcomment %}
         {% block content %}
             <h1>{{ page.title | default: "Page Title Missing" }}</h1>
-            {{{ page.html | default: "<p>Error: No content found for this page.</p>" }}}
+            {{ page.html | default: "<p>Error: No content found for this page.</p>" }}
         {% endblock %}
     </main>
 

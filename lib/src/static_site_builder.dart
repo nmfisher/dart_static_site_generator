@@ -126,7 +126,7 @@ class StaticSiteBuilder {
     Root fallbackRoot;
     try {
       final packageUri =
-          Uri.parse('package:blog_builder/src/defaults/templates/');
+          Uri.parse('package:blog_builder/src/defaults/');
       final resolvedUri = await Isolate.resolvePackageUri(packageUri);
 
       if (resolvedUri == null) {
