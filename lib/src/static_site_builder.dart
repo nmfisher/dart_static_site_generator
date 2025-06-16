@@ -7,11 +7,13 @@ import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:liquify/liquify.dart';
 import 'package:path/path.dart' as pathlib;
+import 'package:blog_builder/src/site_data_model.dart'; // New import
 
 class StaticSiteBuilder {
   final String inputDir;
   final String outputDir;
   late ConfigModel siteConfig;
+  late SiteData siteData; // New field
   Root? _templateRoot;
   final TemplateRenderer? _injectedRenderer;
   TemplateRenderer? _renderer;
@@ -20,6 +22,8 @@ class StaticSiteBuilder {
 
   // FileSystem abstraction for testability
   final FileSystem fileSystem;
+
+  late final _logger = Logger(this.runtimeType.toString());
 
   StaticSiteBuilder({
     required this.inputDir,
@@ -63,6 +67,9 @@ class StaticSiteBuilder {
     await _generateIndexPages(
         fileSystem.directory(pathlib.join(inputDir, 'content')), pages);
 
+    // Build the hierarchical site data after all pages (including generated index pages) are parsed
+    siteData = _buildSiteData(pages);
+
     await _renderAllPages(pages);
 
     await _copyAssets();
@@ -84,7 +91,7 @@ class StaticSiteBuilder {
       await outputDirectory.create(recursive: true);
       print('Created output directory: $outputDir');
     } catch (e) {
-      throw Exception(
+      _logger.warn(
           "Failed to clean or create output directory '$outputDir' : $e");
     }
   }
@@ -120,13 +127,12 @@ class StaticSiteBuilder {
     } else {
       print(
           'User templates directory not found. Will rely on bundled defaults.');
-      primaryRoot = MapRoot({}); 
+      primaryRoot = MapRoot({});
     }
 
     Root fallbackRoot;
     try {
-      final packageUri =
-          Uri.parse('package:blog_builder/src/defaults/');
+      final packageUri = Uri.parse('package:blog_builder/src/defaults/');
       final resolvedUri = await Isolate.resolvePackageUri(packageUri);
 
       if (resolvedUri == null) {
@@ -340,11 +346,12 @@ class StaticSiteBuilder {
 
     for (final page in pages) {
       final layoutName = page.layoutId ?? (page.isIndex ? 'list' : 'default');
-      
+
       try {
         final renderedContent = await renderer.renderPageWithSiteConfig(
-            page, siteConfig, layoutName: layoutName
-        );
+            page, siteConfig, siteData,
+            layoutName: layoutName // Pass siteData
+            );
 
         await _writeOutputFile(page, renderedContent);
       } catch (e, stackTrace) {
@@ -352,7 +359,7 @@ class StaticSiteBuilder {
         print('--------------------------');
         print('Error rendering page: ${page.source}');
         print('Route: ${page.route}');
-        print('Layout used: $layoutName'); 
+        print('Layout used: $layoutName');
         print('Error: $e');
         print('Stack Trace:\n$stackTrace');
         print('--------------------------');
@@ -477,7 +484,6 @@ class StaticSiteBuilder {
     return results;
   }
 
-  // Generates the sitemap using the SitemapGenerator and the injected filesystem
   Future<void> _generateSitemap(List<PageModel> pages) async {
     print('\nGenerating sitemap...');
     final sitemapFile = pathlib.join(outputDir, 'sitemap.xml');
@@ -497,5 +503,72 @@ class StaticSiteBuilder {
       // Error message handled inside SitemapGenerator, just re-log here if needed
       print('Error occurred during sitemap generation step: $e');
     }
+  }
+
+  // Builds a hierarchical SiteData object from a flat list of PageModels
+  SiteData _buildSiteData(List<PageModel> allPages) {
+    final SiteData root = SiteData(name: 'root', route: '/');
+    final Map<String, SiteData> nodes = {
+      '/': root
+    }; // Map of route to SiteData node
+
+    // Helper to get or create a SiteData node for a given route
+    SiteData getOrCreateNode(String route, String name) {
+      if (!nodes.containsKey(route)) {
+        final newNode = SiteData(name: name, route: route);
+        nodes[route] = newNode;
+
+        // Link to parent
+        if (route != '/') {
+          final parentRoute = pathlib.dirname(route);
+          final parentName = pathlib.basename(parentRoute);
+          final parentNode = getOrCreateNode(
+              parentRoute, parentName.isEmpty ? 'root' : parentName);
+          parentNode.children[name] = newNode;
+        }
+      }
+      return nodes[route]!;
+    }
+
+    // Create all directory nodes first, ensuring parents exist before children
+    // Sort pages by route length to ensure parent directories are processed before children
+    allPages.sort((a, b) => a.route.length.compareTo(b.route.length));
+
+    for (final page in allPages) {
+      final segments = pathlib.split(page.route);
+      String currentPath = '';
+      for (int i = 0; i < segments.length; i++) {
+        final segment = segments[i];
+        if (segment.isEmpty && i == 0) {
+          // Root
+          currentPath = '/';
+        } else if (segment.isNotEmpty) {
+          currentPath = pathlib.join(currentPath, segment);
+        } else {
+          continue;
+        }
+        getOrCreateNode(
+            currentPath, segment.isEmpty && i == 0 ? 'root' : segment);
+      }
+    }
+
+    // Now, assign pages to their respective SiteData nodes
+    for (final page in allPages) {
+      final parentRoute = page.route == '/' ? '/' : pathlib.dirname(page.route);
+      final parentNode = nodes[parentRoute];
+
+      if (parentNode != null) {
+        if (page.isIndex && page.route == parentNode.route) {
+          // This page is the index for its directory. Assign it to the node's 'page' property.
+          parentNode.page = page;
+        } else {
+          // Regular page, add to parent's pages list
+          parentNode.pages.add(page);
+        }
+      } else {
+        print("Warning: Could not find parent node for page: ${page.route}");
+      }
+    }
+    return root;
   }
 }

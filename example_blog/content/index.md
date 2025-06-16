@@ -1,6 +1,6 @@
 ---
 title: Welcome Home!
-layout: default # Use the default layout
+layout: home # Use the home layout
 published: true
 meta:
   description: "The homepage of my awesome blog."

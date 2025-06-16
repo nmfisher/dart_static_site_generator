@@ -1,1 +1,31 @@
 {% layout '_layouts/default.liquid' %}
+
+{% block content %}
+    <article class="home-page">
+        <header>
+            <h1>{{ page.title | default: "Welcome" }}</h1>
+            {{ page.html }}
+        </header>
+
+        <h2>Latest Posts</h2>
+        <ul class="post-list">
+            {% for post in site.posts.all %}
+                <li class="post-list-item">
+                    <h3><a href="{{ post.route }}">{{ post.title }}</a></h3>
+                    {% if post.date %}
+                        <p class="post-meta">
+                            <time datetime="{{ post.date }}">
+                                {{ post.date | date: "%B %d, %Y" }}
+                            </time>
+                        </p>
+                    {% endif %}
+                    {% if post.blurb %}
+                        <p class="post-blurb">{{ post.blurb | escape }}</p>
+                    {% endif %}
+                </li>
+            {% else %}
+                <li>No posts found.</li>
+            {% endfor %}
+        </ul>
+    </article>
+{% endblock %}

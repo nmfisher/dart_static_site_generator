@@ -6,13 +6,12 @@ import 'package:yaml/yaml.dart';
 
 
 class PageModel {
-  final String html;
   final String? layoutId; // Template specified in frontmatter
   final String? templateId; // Often derived from parent dir, used if layoutId missing
   final String title;
   final String route; // URL path
   final Map<String, String> metadata;
-  final String markdown; // Original markdown content (after frontmatter)
+  final String rawMarkdown; // Original markdown content (after frontmatter)
   final DateTime? date;
   final String blurb; // Auto-generated summary
   final String source; // Original file path
@@ -20,19 +19,18 @@ class PageModel {
   final bool isIndex; // Is this an auto-generated index page?
 
   PageModel(
-      {required this.html,
-      required this.title,
+      {required this.title,
       required this.route,
-      required this.markdown,
+      required this.rawMarkdown, // Changed from markdown
       required this.source,
       required this.blurb,
       this.draft = true,
-      required this.metadata, // Make required
+      required this.metadata,
       this.layoutId,
       this.templateId,
       this.date,
       this.isIndex = false}) {
-    if (route.isEmpty && !isIndex) { // Allow empty route for potential root index
+    if (route.isEmpty && !isIndex) {
        throw ArgumentError.value(route, 'route', "Route cannot be empty (source $source)");
     }
      if (title.isEmpty) {
@@ -70,22 +68,21 @@ class PageModel {
     DateTime? date;
     if (doc["date"] != null) {
       try {
-        // Attempt parsing - consider using DateFormat for more formats
         date = DateTime.parse(doc["date"].toString());
-        // Example using intl (add dependency first):
-        // date = DateFormat('yyyy-MM-dd HH:mm:ss').parse(doc["date"].toString());
       } catch (err) {
         print("Warning: Could not parse date '${doc["date"]}' in $filePath (expected ISO 8601 format): $err");
       }
     }
 
-    final html = md.markdownToHtml(markdownContent, inlineSyntaxes: [md.InlineHtmlSyntax()]);
-    final plainText = html.replaceAll(RegExp(r'<[^>]*>|\s{2,}'), ' ').trim(); // Strip tags and excessive whitespace
+    // No longer converting markdown to html here. Store raw markdown.
+    // The blurb still needs to be generated from plain text, so we'll do a temporary conversion for that.
+    final tempHtmlForBlurb = md.markdownToHtml(markdownContent, inlineSyntaxes: [md.InlineHtmlSyntax()]);
+    final plainText = tempHtmlForBlurb.replaceAll(RegExp(r'<[^>]*>|\s{2,}'), ' ').trim();
     final blurb = plainText.substring(0, min(plainText.length, 200)).trim();
 
      final metadata = <String, String>{
       "og:description": blurb,
-      "og:title": title.replaceAll('"', '"'), // Use HTML entity for quotes
+      "og:title": title.replaceAll('"', '"'),
       "twitter:title": title.replaceAll('"', '"'),
       "twitter:description": blurb,
     };
@@ -106,17 +103,16 @@ class PageModel {
       final relativePath = p.relative(filePath, from: baseDir.path);
       final pathSegments = p.split(p.withoutExtension(relativePath));
 
-      // Sanitize segments for URL safety (basic example: replace space with -, remove unsafe chars)
       final sanitizedSegments = pathSegments.map((s) => s
         .replaceAll(' ', '-')
-        .replaceAll(RegExp(r'[^\w\-\.~]'), '') // Keep word chars, -, ., ~, _
-        .toLowerCase() // Normalize to lowercase
+        .replaceAll(RegExp(r'[^\w\-\.~]'), '')
+        .toLowerCase()
       ).toList();
 
       if (sanitizedSegments.last.toLowerCase() == "index") {
-         sanitizedSegments.removeLast(); // Remove 'index' part
+         sanitizedSegments.removeLast();
          if (sanitizedSegments.isEmpty) {
-            route = '/'; // Root index
+            route = '/';
          } else {
             route = '/${sanitizedSegments.join('/')}';
          }
@@ -125,7 +121,6 @@ class PageModel {
       }
     }
 
-    // Ensure leading slash, remove trailing slash if not root
     if (!route.startsWith('/')) {
       route = '/$route';
     }
@@ -136,7 +131,7 @@ class PageModel {
     print("Parsed ${file.path} -> route: $route");
 
     return PageModel(
-        html: html,
+        rawMarkdown: markdownContent, // Store raw markdown
         source: filePath,
         layoutId: layoutId,
         templateId: templateId,
@@ -144,7 +139,6 @@ class PageModel {
         route: route,
         date: date,
         blurb: blurb,
-        markdown: markdownContent,
         metadata: metadata,
         draft: doc["published"] != true
     );
@@ -189,7 +183,7 @@ class PageModel {
     metadata.putIfAbsent("og:description", () => "Index of $title");
 
     return PageIndexPageModel(
-        html: "", // Index pages typically generate HTML via layout
+        rawMarkdown: "", // Index pages typically don't have markdown content directly
         source: directory.path,
         title: title,
         route: fullpath,
@@ -201,20 +195,19 @@ class PageModel {
         isIndex: true);
   }
 
-      Map<String, dynamic> toMap() {
+  Map<String, dynamic> toMap() {
     return {
-      'html': html,
       'layoutId': layoutId,
       'templateId': templateId,
       'title': title,
       'route': route,
-      // CHANGE: Pass metadata directly as a Map
       'metadata': metadata,
-      'date': date?.toIso8601String(),
+      'date': date, // Pass DateTime object directly
       'blurb': blurb,
       'source': source,
       'draft': draft,
       'isIndex': isIndex,
+      'raw_markdown': rawMarkdown, // Add raw markdown to map
     };
   }
 
@@ -229,18 +222,16 @@ class PageIndexPageModel extends PageModel {
       required super.source,
       required super.title,
       required super.route,
-      required super.html,
       required super.metadata,
       required super.blurb,
-      super.markdown = "",
+      super.rawMarkdown = "", // Changed from markdown
       super.layoutId,
       super.templateId = "index",
       super.draft = false,
       super.isIndex = true,
-      super.date}) {}
+      super.date}); // Removed explicit super() call, relying on super.parameterName
 
-
-     @override
+   @override
    Map<String, dynamic> toMap() {
      final map = super.toMap(); // Calls the modified PageModel.toMap()
      // Add children data, maybe sorted by date (descending)
@@ -257,5 +248,4 @@ class PageIndexPageModel extends PageModel {
           .toList();
      return map;
    }
-
 }
