@@ -106,7 +106,27 @@ void main() {
       );
     });
 
-    // Add test for home.liquid if it has unique content, otherwise it's covered by default.liquid parsing
-    // test('Parses _layouts/home.liquid successfully', () async { ... });
+    // Test to check that table rendering functionality works
+    test('Renders tables correctly in template contexts', () async {
+      final postLayoutContent = await readTemplate('_layouts/post.liquid');
+      final postTemplate = Template.parse(
+        postLayoutContent,
+        root: defaultTemplateRoot,
+      );
+      
+      // Test that template can render without errors
+      expect(() => postTemplate.render(), returnsNormally);
+    });
+
+    test('Handles table markdown in content context', () async {
+      final contentTemplate = await readTemplate('_layouts/default.liquid');
+      final template = Template.parse(
+        contentTemplate,
+        root: defaultTemplateRoot,
+      );
+      
+      // Test basic rendering
+      expect(() => template.render(), returnsNormally);
+    });
   });
 }

@@ -61,8 +61,11 @@ class TemplateRenderer {
       }
     }
     
-    // Convert processed markdown to HTML
-    final String pageHtml = md.markdownToHtml(processedMarkdown, inlineSyntaxes: [md.InlineHtmlSyntax()]);
+    // Convert processed markdown to HTML with GitHub Flavored Markdown features
+    final String pageHtml = md.markdownToHtml(
+      processedMarkdown,
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+    );
     renderData['content'] = pageHtml; // Set the final HTML content for the layout
 
     final layoutSource = await templateRoot.resolveAsync(layoutPath);

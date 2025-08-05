@@ -568,5 +568,79 @@ void main() {
       expect(result, equals('<div>Post Date: 2023-01-15</div>')); // Changed expected output
     });
 
+    test("should render markdown tables correctly", () async {
+      final testRoot = createTestRoot({
+        "_layouts/table_test.liquid": "<div>{{ content }}</div>",
+      });
+
+      renderer = TemplateRenderer(testRoot);
+
+      const tableMarkdown =
+          "| Name | Age | Location |\n|------|----:|----------|\n| Alice | 30 | New York |\n| Bob | 25 | Los Angeles |\n| Charlie | 35 | Chicago |\n\nRegular paragraph after table.";
+
+      final page = PageModel(
+        layoutId: "table_test",
+        rawMarkdown: tableMarkdown,
+        title: "Table Test Post",
+        route: "/table-test",
+        source: "/path/to/table.md",
+        blurb: "A test post with markdown tables",
+        metadata: {},
+        date: DateTime.now(),
+        draft: false,
+        isIndex: false,
+      );
+
+      final result = await renderer.renderPage(page);
+
+      // Verify the table structure is present
+      expect(result, contains("<table>"));
+      expect(result, contains("</table>"));
+      expect(result, contains("<thead>"));
+      expect(result, contains("<tbody>"));
+      expect(result, contains('<th>Name</th>'));
+      expect(result, contains('<th align="right">Age</th>'));
+      expect(result, contains('<th>Location</th>'));
+      expect(result, contains("<td>Alice</td>"));
+      expect(result, contains("<td>Bob</td>"));
+      expect(result, contains("<td>Charlie</td>"));
+      expect(result, contains("<p>Regular paragraph after table.</p>"));
+    });
+
+    test("should render markdown tables with alignment indicators", () async {
+      final testRoot = createTestRoot({
+        "_layouts/table_align_test.liquid": "<div>{{ content }}</div>",
+      });
+
+      renderer = TemplateRenderer(testRoot);
+
+      const alignedTableMarkdown =
+          "| Left | Right | Center |\n|:-----|------:|:------:|\n| Left 1 | Right 1 | Center 1 |\n| Left 2 | Right 2 | Center 2 |";
+
+      final page = PageModel(
+        layoutId: "table_align_test",
+        rawMarkdown: alignedTableMarkdown,
+        title: "Aligned Table Test",
+        route: "/aligned-table",
+        source: "/path/to/aligned-table.md",
+        blurb: "A test post with aligned markdown tables",
+        metadata: {},
+        date: DateTime.now(),
+        draft: false,
+        isIndex: false,
+      );
+
+      final result = await renderer.renderPage(page);
+
+      // Verify alignment - table should render correctly.
+      // The markdown package will add style attributes for alignment.
+      // Note: precise HTML output can vary between markdown processors.
+      // This test is written to be generally compatible.
+      expect(result, contains("<table>"));
+      expect(result, contains("<tr>"));
+      expect(result, contains('<td align="left">Left 1</td>'));
+      expect(result, contains('<td align="right">Right 1</td>'));
+      expect(result, contains('<td align="center">Center 1</td>'));
+    });
   });
 }
