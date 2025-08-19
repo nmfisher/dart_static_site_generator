@@ -335,25 +335,48 @@ class StaticSiteBuilder {
       print('\nNo pages (content or index) found to render.');
       return;
     }
-    print('\nRendering ${pages.length} HTML page(s)...');
-    renderErrors = 0;
-
-    pages.sort((a, b) => a.route.compareTo(b.route));
-
+    
     if (_renderer == null && _injectedRenderer == null) {
       throw StateError("Renderer is not configured. Cannot render pages.");
     }
+    
+    renderErrors = 0;
+    
+    // Pass 1: Render content and store it in the PageModel
+    print('\n--- Pass 1: Rendering content for ${pages.length} pages...');
+    for (final page in pages) {
+      try {
+        page.renderedContent = await renderer.renderContent(page, siteConfig, siteData);
+      } catch (e, stackTrace) {
+        renderErrors++;
+        print('--------------------------');
+        print('Error rendering content for page: ${page.source}');
+        print('Route: ${page.route}');
+        print('Error: $e');
+        print('Stack Trace:\n$stackTrace');
+        print('--------------------------');
+      }
+    }
 
+    if (renderErrors > 0) {
+      print('Warning: Encountered $renderErrors errors during content rendering pass.');
+      // Decide if you want to stop here or continue
+    }
+    
+    // Pass 2: Render the full page with layout, now with access to all rendered content
+    print('\n--- Pass 2: Rendering full layouts for ${pages.length} pages...');
+    pages.sort((a, b) => a.route.compareTo(b.route));
+    
     for (final page in pages) {
       final layoutName = page.layoutId ?? (page.isIndex ? 'list' : 'default');
 
       try {
-        final renderedContent = await renderer.renderPageWithSiteConfig(
+        final renderedPage = await renderer.renderPageWithLayout(
             page, siteConfig, siteData,
-            layoutName: layoutName // Pass siteData
-            );
+            layoutName: layoutName,
+        );
 
-        await _writeOutputFile(page, renderedContent);
+        await _writeOutputFile(page, renderedPage);
       } catch (e, stackTrace) {
         renderErrors++;
         print('--------------------------');
@@ -365,9 +388,10 @@ class StaticSiteBuilder {
         print('--------------------------');
       }
     }
+    
     print('HTML rendering complete.');
     if (renderErrors > 0) {
-      print('Warning: Encountered $renderErrors rendering/writing errors.');
+      print('Warning: Encountered a total of $renderErrors rendering/writing errors.');
     }
   }
 

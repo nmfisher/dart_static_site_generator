@@ -16,41 +16,31 @@ class TemplateRenderer {
     return '_layouts/$layoutName.liquid'.replaceAll(r'\', '/');
   }
 
-  Future<String> renderPage(PageModel page, {String? layoutName}) async {
-    // For renderPage, we don't have siteConfig or siteData, so we'll pass empty maps
-    return await renderPageWithSiteConfig(
-        page, ConfigModel(title: '', owner: '', metadata: {}), SiteData(name: '', route: ''),
-        layoutName: layoutName);
-  }
-
-  Future<String> renderPageWithSiteConfig(
-      PageModel page, ConfigModel siteConfig, SiteData siteData,
-      {String? layoutName}) async {
-    final layoutPath =
-        resolveLayoutPath(layoutName ?? page.layoutId, page.isIndex);
-    print("Resolved layoutPath : $layoutPath");
-
-    // Prepare base render data
+  // Prepares the data map used for rendering
+  Map<String, dynamic> _prepareRenderData(PageModel page, ConfigModel siteConfig, SiteData siteData) {
     final Map<String, dynamic> renderData = {
       'site': siteConfig.toMap(),
       'page': page.toMap(),
     };
-    // Merge siteData into the 'site' map
     (renderData['site'] as Map<String, dynamic>).addAll(siteData.toLiquidMap());
 
-    // Add formatted date to page data if available
     if (page.date != null) {
       (renderData['page'] as Map<String, dynamic>)['formatted_date'] =
-          _formatDate(page.date!, "%Y-%m-%d"); // Default format for now
+          _formatDate(page.date!, "%Y-%m-%d");
     }
+    return renderData;
+  }
 
-    // Process raw markdown with Liquid first, then convert to HTML
+  /// Pass 1: Renders the page's markdown content to HTML.
+  Future<String> renderContent(PageModel page, ConfigModel siteConfig, SiteData siteData) async {
+    final renderData = _prepareRenderData(page, siteConfig, siteData);
     String processedMarkdown = page.rawMarkdown;
+    
     if (page.rawMarkdown.isNotEmpty) {
       try {
         final markdownTemplate = Template.parse(
-          processedMarkdown, // Use processedMarkdown here
-          data: renderData, // Pass the full renderData to process Liquid in markdown
+          processedMarkdown,
+          data: renderData,
           root: templateRoot,
         );
         processedMarkdown = await markdownTemplate.render();
@@ -61,12 +51,24 @@ class TemplateRenderer {
       }
     }
     
-    // Convert processed markdown to HTML with GitHub Flavored Markdown features
-    final String pageHtml = md.markdownToHtml(
+    return md.markdownToHtml(
       processedMarkdown,
       extensionSet: md.ExtensionSet.gitHubFlavored,
     );
-    renderData['content'] = pageHtml; // Set the final HTML content for the layout
+  }
+
+  /// Pass 2: Renders the final page with its layout.
+  Future<String> renderPageWithLayout(
+      PageModel page, ConfigModel siteConfig, SiteData siteData,
+      {String? layoutName}) async {
+    final layoutPath =
+        resolveLayoutPath(layoutName ?? page.layoutId, page.isIndex);
+    print("Resolved layoutPath : $layoutPath");
+
+    final renderData = _prepareRenderData(page, siteConfig, siteData);
+    
+    // Use the pre-rendered content from pass 1
+    renderData['content'] = page.renderedContent ?? '';
 
     final layoutSource = await templateRoot.resolveAsync(layoutPath);
 

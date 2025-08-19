@@ -4,10 +4,10 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
-
 class PageModel {
   final String? layoutId; // Template specified in frontmatter
-  final String? templateId; // Often derived from parent dir, used if layoutId missing
+  final String?
+      templateId; // Often derived from parent dir, used if layoutId missing
   final String title;
   final String route; // URL path
   final Map<String, String> metadata;
@@ -17,11 +17,12 @@ class PageModel {
   final String source; // Original file path
   final bool draft;
   final bool isIndex; // Is this an auto-generated index page?
+  String? renderedContent;
 
   PageModel(
       {required this.title,
       required this.route,
-      required this.rawMarkdown, // Changed from markdown
+      required this.rawMarkdown,
       required this.source,
       required this.blurb,
       this.draft = true,
@@ -31,9 +32,10 @@ class PageModel {
       this.date,
       this.isIndex = false}) {
     if (route.isEmpty && !isIndex) {
-       throw ArgumentError.value(route, 'route', "Route cannot be empty (source $source)");
+      throw ArgumentError.value(
+          route, 'route', "Route cannot be empty (source $source)");
     }
-     if (title.isEmpty) {
+    if (title.isEmpty) {
       print("Warning: Page title is empty for source: $source");
     }
   }
@@ -55,32 +57,36 @@ class PageModel {
     try {
       doc = loadYaml(frontmatterContent);
       if (doc == null || doc is! YamlMap) {
-         throw FormatException("Frontmatter is not a valid YAML map in $filePath.");
+        throw FormatException(
+            "Frontmatter is not a valid YAML map in $filePath.");
       }
     } catch (e) {
-      throw FormatException("Failed to parse YAML frontmatter in $filePath: $e\nContent:\n$frontmatterContent");
+      throw FormatException(
+          "Failed to parse YAML frontmatter in $filePath: $e\nContent:\n$frontmatterContent");
     }
 
     final layoutId = doc["layout"]?.toString();
     final templateId = doc["template"]?.toString();
-    final title = doc["title"]?.toString() ?? p.basenameWithoutExtension(filePath);
+    final title =
+        doc["title"]?.toString() ?? p.basenameWithoutExtension(filePath);
 
     DateTime? date;
     if (doc["date"] != null) {
       try {
         date = DateTime.parse(doc["date"].toString());
       } catch (err) {
-        print("Warning: Could not parse date '${doc["date"]}' in $filePath (expected ISO 8601 format): $err");
+        print(
+            "Warning: Could not parse date '${doc["date"]}' in $filePath (expected ISO 8601 format): $err");
       }
     }
 
-    // No longer converting markdown to html here. Store raw markdown.
-    // The blurb still needs to be generated from plain text, so we'll do a temporary conversion for that.
-    final tempHtmlForBlurb = md.markdownToHtml(markdownContent, inlineSyntaxes: [md.InlineHtmlSyntax()]);
-    final plainText = tempHtmlForBlurb.replaceAll(RegExp(r'<[^>]*>|\s{2,}'), ' ').trim();
+    final tempHtmlForBlurb = md.markdownToHtml(markdownContent,
+        inlineSyntaxes: [md.InlineHtmlSyntax()]);
+    final plainText =
+        tempHtmlForBlurb.replaceAll(RegExp(r'<[^>]*>|\s{2,}'), ' ').trim();
     final blurb = plainText.substring(0, min(plainText.length, 200)).trim();
 
-     final metadata = <String, String>{
+    final metadata = <String, String>{
       "og:description": blurb,
       "og:title": title.replaceAll('"', '"'),
       "twitter:title": title.replaceAll('"', '"'),
@@ -93,7 +99,8 @@ class PageModel {
           metadata[key.toString()] = doc["meta"][key]?.toString() ?? '';
         }
       } catch (e) {
-         print("Warning: Could not parse 'meta' section in frontmatter for $filePath: $e");
+        print(
+            "Warning: Could not parse 'meta' section in frontmatter for $filePath: $e");
       }
     }
 
@@ -103,21 +110,22 @@ class PageModel {
       final relativePath = p.relative(filePath, from: baseDir.path);
       final pathSegments = p.split(p.withoutExtension(relativePath));
 
-      final sanitizedSegments = pathSegments.map((s) => s
-        .replaceAll(' ', '-')
-        .replaceAll(RegExp(r'[^\w\-\.~]'), '')
-        .toLowerCase()
-      ).toList();
+      final sanitizedSegments = pathSegments
+          .map((s) => s
+              .replaceAll(' ', '-')
+              .replaceAll(RegExp(r'[^\w\-\.~]'), '')
+              .toLowerCase())
+          .toList();
 
       if (sanitizedSegments.last.toLowerCase() == "index") {
-         sanitizedSegments.removeLast();
-         if (sanitizedSegments.isEmpty) {
-            route = '/';
-         } else {
-            route = '/${sanitizedSegments.join('/')}';
-         }
+        sanitizedSegments.removeLast();
+        if (sanitizedSegments.isEmpty) {
+          route = '/';
+        } else {
+          route = '/${sanitizedSegments.join('/')}';
+        }
       } else {
-         route = '/${sanitizedSegments.join('/')}';
+        route = '/${sanitizedSegments.join('/')}';
       }
     }
 
@@ -131,7 +139,7 @@ class PageModel {
     print("Parsed ${file.path} -> route: $route");
 
     return PageModel(
-        rawMarkdown: markdownContent, // Store raw markdown
+        rawMarkdown: markdownContent,
         source: filePath,
         layoutId: layoutId,
         templateId: templateId,
@@ -140,21 +148,21 @@ class PageModel {
         date: date,
         blurb: blurb,
         metadata: metadata,
-        draft: doc["published"] != true
-    );
+        draft: doc["published"] != true);
   }
 
   factory PageModel.index(
       Directory directory, Directory baseDirectory, List<PageModel> children) {
     var relativePath = p.relative(directory.path, from: baseDirectory.path);
-    var pathSegments = p.split(relativePath).map((s) => s.toLowerCase()).toList();
+    var pathSegments =
+        p.split(relativePath).map((s) => s.toLowerCase()).toList();
 
     var fullpath = '/${pathSegments.join('/')}';
     if (fullpath != '/' && fullpath.endsWith('/')) {
       fullpath = fullpath.substring(0, fullpath.length - 1);
     }
     if (fullpath == '/.') {
-        fullpath = '/';
+      fullpath = '/';
     }
 
     var dirname = p.basename(directory.path);
@@ -166,16 +174,19 @@ class PageModel {
 
     if (indexConfigFile.existsSync()) {
       try {
-        var indexConfig = loadYaml(indexConfigFile.readAsStringSync()) as YamlMap;
+        var indexConfig =
+            loadYaml(indexConfigFile.readAsStringSync()) as YamlMap;
         title = indexConfig["title"]?.toString() ?? title;
         layoutId = indexConfig["layout"]?.toString();
-         if (indexConfig["meta"] != null && indexConfig["meta"] is YamlMap) {
-           for (final key in indexConfig["meta"].keys) {
-             metadata[key.toString()] = indexConfig["meta"][key]?.toString() ?? '';
-           }
-         }
+        if (indexConfig["meta"] != null && indexConfig["meta"] is YamlMap) {
+          for (final key in indexConfig["meta"].keys) {
+            metadata[key.toString()] =
+                indexConfig["meta"][key]?.toString() ?? '';
+          }
+        }
       } catch (e) {
-         print("Warning: Could not parse index config file ${indexConfigFile.path}: $e");
+        print(
+            "Warning: Could not parse index config file ${indexConfigFile.path}: $e");
       }
     }
 
@@ -183,16 +194,33 @@ class PageModel {
     metadata.putIfAbsent("og:description", () => "Index of $title");
 
     return PageIndexPageModel(
-        rawMarkdown: "", // Index pages typically don't have markdown content directly
+        rawMarkdown:
+            "",
         source: directory.path,
         title: title,
         route: fullpath,
         children: children,
-        layoutId: layoutId ?? 'list', // Default layout for indexes
+        layoutId: layoutId ?? 'list',
         metadata: metadata,
         blurb: "Index page for $title",
-        draft: false, // Index pages are usually not drafts
+        draft: false,
         isIndex: true);
+  }
+
+  factory PageModel.fromMap(Map<String, dynamic> data) {
+    return PageModel(
+      rawMarkdown: data['rawMarkdown'] ?? '',
+      title: data['title'] ?? 'Untitled',
+      route: data['route'] ?? '/',
+      source: data['source'] ?? '/path/to/source.md',
+      blurb: data['blurb'] ?? '',
+      metadata: Map<String, String>.from(data['metadata'] ?? {}),
+      date: data['date'],
+      draft: data['draft'] ?? false,
+      layoutId: data['layoutId'],
+      templateId: data['templateId'],
+      isIndex: data['isIndex'] ?? false,
+    );
   }
 
   Map<String, dynamic> toMap() {
@@ -202,16 +230,18 @@ class PageModel {
       'title': title,
       'route': route,
       'metadata': metadata,
-      'date': date, // Pass DateTime object directly
+      'date': date,
       'blurb': blurb,
       'source': source,
       'draft': draft,
       'isIndex': isIndex,
-      'raw_markdown': rawMarkdown, // Add raw markdown to map
+      'raw_markdown': rawMarkdown,
+      'rendered_content': renderedContent,
     };
   }
 
-   static String _capitalize(String s) => s.isEmpty ? '' : s[0].toUpperCase() + s.substring(1);
+  static String _capitalize(String s) =>
+      s.isEmpty ? '' : s[0].toUpperCase() + s.substring(1);
 }
 
 class PageIndexPageModel extends PageModel {
@@ -224,28 +254,53 @@ class PageIndexPageModel extends PageModel {
       required super.route,
       required super.metadata,
       required super.blurb,
-      super.rawMarkdown = "", // Changed from markdown
+      super.rawMarkdown = "",
       super.layoutId,
       super.templateId = "index",
       super.draft = false,
       super.isIndex = true,
-      super.date}); // Removed explicit super() call, relying on super.parameterName
+      super.date});
 
-   @override
-   Map<String, dynamic> toMap() {
-     final map = super.toMap(); // Calls the modified PageModel.toMap()
-     // Add children data, maybe sorted by date (descending)
-     final sortedChildren = List<PageModel>.from(children)
-        ..sort((a, b) {
-            if (a.date == null && b.date == null) return 0;
-            if (a.date == null) return 1; // Put pages without dates last
-            if (b.date == null) return -1;
-            return b.date!.compareTo(a.date!); // Newest first
-        });
-     map['children'] = sortedChildren
-          .where((c) => !c.draft)
-          .map((c) => c.toMap())
-          .toList();
-     return map;
-   }
+  @override
+  Map<String, dynamic> toMap() {
+    final map = super.toMap();
+    final sortedChildren = List<PageModel>.from(children)
+      ..sort((a, b) {
+        if (a.date == null && b.date == null) return 0;
+        if (a.date == null) return 1;
+        if (b.date == null) return -1;
+        return b.date!.compareTo(a.date!);
+      });
+    map['children'] =
+        sortedChildren.where((c) => !c.draft).map((c) => c.toMap()).toList();
+    return map;
+  }
+  
+  factory PageIndexPageModel.fromMap(Map<String, dynamic> data) {
+    final List<PageModel> children = [];
+    if (data['children'] is List) {
+      for (final childData in data['children']) {
+        // If it's ALREADY a PageModel, add it directly.
+        if (childData is PageModel) {
+          children.add(childData);
+        // If it's a map, construct a new PageModel from it.
+        } else if (childData is Map<String, dynamic>) {
+          children.add(PageModel.fromMap(childData));
+        }
+      }
+    }
+
+    return PageIndexPageModel(
+      rawMarkdown: data['rawMarkdown'] ?? '',
+      title: data['title'] ?? 'Untitled Index',
+      route: data['route'] ?? '/',
+      source: data['source'] ?? '/path/to/index/',
+      blurb: data['blurb'] ?? '',
+      metadata: Map<String, String>.from(data['metadata'] ?? {}),
+      children: children,
+      layoutId: data['layoutId'],
+      templateId: data['templateId'],
+      date: data['date'],
+    );
+  }
 }
