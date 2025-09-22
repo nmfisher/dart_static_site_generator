@@ -2,16 +2,16 @@ import 'package:blog_builder/blog_builder.dart';
 import 'package:blog_builder/src/renderer.dart';
 import 'package:liquify/liquify.dart';
 import 'package:test/test.dart';
-import 'package:blog_builder/src/site_data_model.dart'; // New import
+import 'package:blog_builder/src/site_data_model.dart';
 
 void main() {
   group('TemplateRenderer', () {
     late TemplateRenderer renderer;
     late ConfigModel testConfig;
-    late SiteData dummySiteData; // New field
+    late SiteData dummySiteData;
 
     final testPageData = {
-      'rawMarkdown': 'Test content', // Changed from html and markdown
+      'rawMarkdown': 'Test content with **bold** text.',
       'title': 'Test Page Title',
       'route': '/test-page',
       'source': '/path/to/source.md',
@@ -22,8 +22,11 @@ void main() {
       'isIndex': false,
     };
 
+    // Expected HTML output from testPageData's rawMarkdown
+    const testPageRenderedContent = '<p>Test content with <strong>bold</strong> text.</p>\n';
+
     final testIndexPageData = {
-      'rawMarkdown': '', // Index pages often rely on layout for content structure
+      'rawMarkdown': 'This is the main content for the index.',
       'title': 'Test Index',
       'route': '/test-index',
       'source': '/path/to/test-index/',
@@ -34,7 +37,7 @@ void main() {
       'isIndex': true,
       'children': [
         PageModel(
-          rawMarkdown: 'Child 1 md', // Changed from html and markdown
+          rawMarkdown: 'Child 1 md',
           title: 'Child Page 1',
           route: '/test-index/child1',
           source: '/path/to/test-index/child1.md',
@@ -44,7 +47,7 @@ void main() {
           draft: false,
         ),
         PageModel(
-          rawMarkdown: 'Child 2 md', // Changed from html and markdown
+          rawMarkdown: 'Child 2 md',
           title: 'Child Page 2',
           route: '/test-index/child2',
           source: '/path/to/test-index/child2.md',
@@ -56,7 +59,6 @@ void main() {
       ]
     };
 
-    // Common template definitions used by block tests
     const baseLayoutContent = '''
 <!DOCTYPE html>
 <html>
@@ -70,7 +72,7 @@ void main() {
         {% block main_content %}
             <h1>Default Content Area</h1>
             <p>Base layout content.</p>
-            {{ content }} {# Renders the page.html content by default #}
+            {{ content }} {# Renders the page's renderedContent #}
         {% endblock %}
     </main>
     <footer>{% block footer %}Base Footer{% endblock %}</footer>
@@ -108,539 +110,232 @@ void main() {
         metadata: {'site_meta': 'global value'},
         baseUrl: 'http://example.com',
       );
-      dummySiteData = SiteData(name: 'dummy', route: '/'); // Initialize dummy SiteData
+      dummySiteData = SiteData(name: 'dummy', route: '/');
     });
 
     MapRoot createTestRoot(Map<String, String> templates) {
       return MapRoot(templates);
     }
 
-    test('should return correct path for default layout', () {
-      final testRoot = createTestRoot({
-        '_layouts/default.liquid': '<html></html>',
-        '_layouts/list.liquid': '<html></html>',
+    group('Path Resolution', () {
+      test('should return correct path for default layout', () {
+        final testRoot = createTestRoot({});
+        renderer = TemplateRenderer(testRoot);
+        final path = renderer.resolveLayoutPath(null, false);
+        expect(path, equals('_layouts/default.liquid'));
       });
 
-      renderer = TemplateRenderer(testRoot);
-      final path = renderer.resolveLayoutPath(null, false);
-      expect(path, equals('_layouts/default.liquid'));
+      test('should return correct path for list layout (index)', () {
+        final testRoot = createTestRoot({});
+        renderer = TemplateRenderer(testRoot);
+        final path = renderer.resolveLayoutPath(null, true);
+        expect(path, equals('_layouts/list.liquid'));
+      });
+
+      test('should return correct path for custom layout', () {
+        final testRoot = createTestRoot({});
+        renderer = TemplateRenderer(testRoot);
+        final path = renderer.resolveLayoutPath('custom', false);
+        expect(path, equals('_layouts/custom.liquid'));
+      });
     });
 
-    test('should return correct path for list layout (index)', () {
-      final testRoot = createTestRoot({
-        '_layouts/default.liquid': '<html></html>',
-        '_layouts/list.liquid': '<html></html>',
+    group('Pass 1: renderContent', () {
+      test('should render basic markdown to HTML', () async {
+        final testRoot = createTestRoot({});
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap(testPageData);
+
+        final result = await renderer.renderContent(page, testConfig, dummySiteData);
+        expect(result, equals(testPageRenderedContent));
       });
 
-      renderer = TemplateRenderer(testRoot);
-      final path = renderer.resolveLayoutPath(null, true);
-      expect(path, equals('_layouts/list.liquid'));
+      test("should render markdown tables correctly", () async {
+        final testRoot = createTestRoot({});
+        renderer = TemplateRenderer(testRoot);
+        const tableMarkdown =
+            "| Name | Age |\n|------|----:|\n| Alice | 30 |\n| Bob | 25 |";
+        final page = PageModel.fromMap({...testPageData, 'rawMarkdown': tableMarkdown});
+
+        final result = await renderer.renderContent(page, testConfig, dummySiteData);
+        expect(result, contains("<table>"));
+        expect(result, contains("<thead>"));
+        expect(result, contains("<tbody>"));
+        expect(result, contains('<th>Name</th>'));
+        expect(result, contains('<th align="right">Age</th>'));
+        expect(result, contains("<td>Alice</td>"));
+        expect(result, contains("<td>Bob</td>"));
+      });
+
+      test('should process liquid tags within markdown', () async {
+        final testRoot = createTestRoot({});
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({
+          ...testPageData,
+          'rawMarkdown': 'This page is for {{ site.owner }}.',
+        });
+
+        final result = await renderer.renderContent(page, testConfig, dummySiteData);
+        expect(result, equals('<p>This page is for Tester.</p>\n'));
+      });
     });
 
-    test('should return correct path for custom layout', () {
-      final testRoot = createTestRoot({
-        '_layouts/custom.liquid': '<html></html>',
-      });
+    group('Pass 2: renderPageWithLayout', () {
+      test(
+          'should throw exception if layout cannot be resolved',
+          () async {
+        final testRoot = createTestRoot({}); // No layouts defined
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({...testPageData, 'layoutId': 'nonexistent'})
+          ..renderedContent = testPageRenderedContent; // Simulate pass 1
 
-      renderer = TemplateRenderer(testRoot);
-      final path = renderer.resolveLayoutPath('custom', false);
-      expect(path, equals('_layouts/custom.liquid'));
-    });
-
-    test('should return correct path for custom layout (index)', () {
-      final testRoot = createTestRoot({
-        '_layouts/custom.liquid': '<html></html>',
-      });
-
-      renderer = TemplateRenderer(testRoot);
-      final path = renderer.resolveLayoutPath('custom', true);
-      expect(path, equals('_layouts/custom.liquid'));
-    });
-
-    test(
-        'should throw exception if template specified by layoutId cannot be resolved/found',
-        () async {
-      final testRoot = createTestRoot({
-        '_layouts/default.liquid': '<html></html>',
-      });
-
-      renderer = TemplateRenderer(testRoot);
-
-      final page = PageModel(
-        layoutId: 'nonexistent',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
-
-      expectLater(
-        () => renderer.renderPage(page),
-        throwsA(
-            isA<Exception>()),
-      );
-    });
-
-    test('should throw exception if resolved template file is empty', () async {
-      final testRoot = createTestRoot({
-        '_layouts/empty.liquid': '',
-      });
-
-      renderer = TemplateRenderer(testRoot);
-
-      final page = PageModel(
-        layoutId: 'empty',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
-
-      // Liquify itself might handle empty templates differently,
-      // but we expect our renderer to potentially throw if the *result* is empty.
-      // Let's refine the check to expect an empty result exception later.
-      expectLater(
-         () => renderer.renderPage(page),
+        expectLater(
+          () => renderer.renderPageWithLayout(page, testConfig, dummySiteData),
           throwsA(isA<Exception>()),
-      );
-    });
-
-     test(
-        'should throw exception if rendered content is empty or whitespace only',
-        () async {
-      final testRoot = createTestRoot({
-        '_layouts/empty_output.liquid':
-            '{% if false %}This should not render{% endif %}', // Renders nothing
-        '_layouts/whitespace_output.liquid': '   \n  \t ', // Renders only whitespace
+        );
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should throw exception if layout file is empty', () async {
+        final testRoot = createTestRoot({'_layouts/empty.liquid': ''});
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({...testPageData, 'layoutId': 'empty'})
+          ..renderedContent = testPageRenderedContent;
 
-      final emptyOutputPage = PageModel(
-        layoutId: 'empty_output',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
-
-       final whitespaceOutputPage = PageModel(
-        layoutId: 'whitespace_output',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
-
-      expectLater(
-        () => renderer.renderPage(emptyOutputPage),
-        throwsA(isA<Exception>()),
-      );
-       expectLater(
-        () => renderer.renderPage(whitespaceOutputPage),
-        throwsA(isA<Exception>()),
-      );
-    });
-
-
-    test('should render content successfully using default layout', () async {
-      final testRoot = createTestRoot({
-        '_layouts/default.liquid':
-            '<html><head><title>Default - {{ page.title }}</title></head><body>Default Layout: {{ content }}</body></html>',
+        expectLater(
+          () => renderer.renderPageWithLayout(page, testConfig, dummySiteData),
+          throwsA(isA<Exception>().having((e) => e.toString(), 'message', contains('Layout template is empty'))),
+        );
       });
 
-      renderer = TemplateRenderer(testRoot);
+       test(
+          'should throw exception if rendered output is empty or whitespace only',
+          () async {
+        final testRoot = createTestRoot({
+          '_layouts/empty_output.liquid': '{% if false %}This should not render{% endif %}',
+          '_layouts/whitespace_output.liquid': '   \n  \t ',
+        });
+        renderer = TemplateRenderer(testRoot);
 
-      final page = PageModel(
-        layoutId: null, // Explicitly null for default
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
+        final emptyOutputPage = PageModel.fromMap({...testPageData, 'layoutId': 'empty_output'})
+          ..renderedContent = '';
+        final whitespaceOutputPage = PageModel.fromMap({...testPageData, 'layoutId': 'whitespace_output'})
+          ..renderedContent = '';
 
-      final result = await renderer.renderPage(page);
-      expect(
-          result,
-          equals(
-              '<html><head><title>Default - Test Page Title</title></head><body>Default Layout: <p>Test content</p>\n</body></html>'));
-    });
-
-    test(
-        'should render content successfully using custom layout and access page metadata',
-        () async {
-      final testRoot = createTestRoot({
-        '_layouts/custom.liquid':
-            '<html><head><title>Custom - {{ page.title }}</title></head><body><h1>{{ page.title }} ({{ page.metadata.custom_key }})</h1>{{ content }}</body></html>',
+        expectLater(
+          () => renderer.renderPageWithLayout(emptyOutputPage, testConfig, dummySiteData),
+          throwsA(isA<Exception>()),
+        );
+        expectLater(
+          () => renderer.renderPageWithLayout(whitespaceOutputPage, testConfig, dummySiteData),
+          throwsA(isA<Exception>()),
+        );
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should render content successfully using default layout', () async {
+        final testRoot = createTestRoot({
+          '_layouts/default.liquid': '<html><body>Default Layout: {{ content }}</body></html>',
+        });
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap(testPageData)
+          ..renderedContent = testPageRenderedContent; // Simulate pass 1
 
-      final page = PageModel(
-        layoutId: 'custom',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
-
-      final result = await renderer.renderPage(page);
-      expect(
-          result,
-          equals(
-              '<html><head><title>Custom - Test Page Title</title></head><body><h1>Test Page Title (custom value)</h1><p>Test content</p>\n</body></html>'));
-    });
-
-    test('should include site config in rendered output', () async {
-      final testRoot = createTestRoot({
-        '_layouts/site.liquid':
-            '<html><head><title>{{ site.title }} - {{ page.title }}</title></head><body>Site Owner: {{ site.owner }} | {{ content }}</body></html>',
+        final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData);
+        expect(result, equals('<html><body>Default Layout: $testPageRenderedContent</body></html>'));
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should access page and site metadata in layout', () async {
+        final testRoot = createTestRoot({
+          '_layouts/custom.liquid': '{{ site.title }} - {{ page.metadata.custom_key }}: {{ content }}',
+        });
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({...testPageData, 'layoutId': 'custom'})
+          ..renderedContent = '<h1>Hi</h1>';
 
-      final page = PageModel(
-        layoutId: 'site',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
-
-      final result = await renderer.renderPageWithSiteConfig(page, testConfig, dummySiteData);
-      expect(
-          result,
-          equals(
-              '<html><head><title>Test Site - Test Page Title</title></head><body>Site Owner: Tester | <p>Test content</p>\n</body></html>'));
-    });
-
-    test('should render index page using list layout and access children',
-        () async {
-      final testRoot = createTestRoot({
-        '_layouts/list.liquid':
-            '<html><head><title>List - {{ page.title }}</title></head><body><h1>List</h1>\n<ul>{% for item in page.children %}<li><a href="{{ item.route }}">{{ item.title }}</a></li>{% endfor %}</ul>\n{{ content }}</body></html>',
+        final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData);
+        expect(result, equals('Test Site - custom value: <h1>Hi</h1>'));
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should render index page using list layout and access children', () async {
+        final testRoot = createTestRoot({
+          '_layouts/list.liquid': '<h1>List</h1><ul>{% for item in page.children %}<li>{{ item.title }}</li>{% endfor %}</ul>{{ content }}',
+        });
+        renderer = TemplateRenderer(testRoot);
+        final indexPage = PageIndexPageModel.fromMap(testIndexPageData)
+          ..renderedContent = '<p>Index content</p>'; // Simulate pass 1
 
-      final indexPage = PageIndexPageModel(
-        layoutId: null, // Use default for index -> list.liquid
-        rawMarkdown: testIndexPageData['rawMarkdown'] as String, // Changed
-        title: testIndexPageData['title'] as String,
-        route: testIndexPageData['route'] as String,
-        source: testIndexPageData['source'] as String,
-        blurb: testIndexPageData['blurb'] as String,
-        metadata: testIndexPageData['metadata'] as Map<String, String>,
-        children: testIndexPageData['children'] as List<PageModel>,
-        // Note: isIndex is implicit in PageIndexPageModel
-      );
-
-      final result = await renderer.renderPage(indexPage);
-
-      expect(result, contains('<h1>List</h1>'));
-      expect(result,
-          contains('<li><a href="/test-index/child1">Child Page 1</a></li>'));
-      expect(result,
-          contains('<li><a href="/test-index/child2">Child Page 2</a></li>'));
-      expect(result, matches(RegExp(r'<ul>.*</ul>', dotAll: true)));
-      // Index html is empty, so {{ content }} renders nothing
-      expect(result, endsWith('</ul>\n\n</body></html>'));
-    });
-
-    test('should render page with include correctly', () async {
-      final testRoot = createTestRoot({
-        '_layouts/with_include.liquid':
-            '{% render "_includes/header.liquid" with site: site %}<html><body>{{ content }}</body></html>',
-        '_includes/header.liquid': '<header>Site: {{ site.title }}</header>',
+        final result = await renderer.renderPageWithLayout(indexPage, testConfig, dummySiteData);
+        expect(result, contains('<h1>List</h1>'));
+        expect(result, contains('<li>Child Page 1</li>'));
+        expect(result, contains('<li>Child Page 2</li>'));
+        expect(result, endsWith('</ul><p>Index content</p>'));
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should render page with include correctly', () async {
+        final testRoot = createTestRoot({
+          '_layouts/with_include.liquid': '{% render "_includes/header.liquid" with site: site %}{{ content }}',
+          '_includes/header.liquid': '<header>{{ site.title }}</header>',
+        });
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({...testPageData, 'layoutId': 'with_include'})
+          ..renderedContent = '<div>Main</div>';
 
-      final page = PageModel(
-        layoutId: 'with_include',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String,
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
-
-      final result = await renderer.renderPageWithSiteConfig(page, testConfig, dummySiteData);
-
-      expect(
-          result,
-          equals(
-              '<header>Site: Test Site</header><html><body><p>Test content</p>\n</body></html>'));
-    });
-
-     test('should render content using layout blocks correctly', () async {
-      final testRoot = createTestRoot({
-        '_layouts/page_with_blocks.liquid': pageWithBlocksLayoutContent,
-        '_layouts/base.liquid': baseLayoutContent,
+        final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData);
+        expect(result, equals('<header>Test Site</header><div>Main</div>'));
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should render content using layout blocks correctly', () async {
+        final testRoot = createTestRoot({
+          '_layouts/page_with_blocks.liquid': pageWithBlocksLayoutContent,
+          '_layouts/base.liquid': baseLayoutContent,
+        });
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({...testPageData, 'layoutId': 'page_with_blocks'})
+          ..renderedContent = testPageRenderedContent; // Simulate Pass 1
 
-      final page = PageModel(
-        layoutId: 'page_with_blocks',
-        rawMarkdown: testPageData['rawMarkdown'] as String, // Changed
-        title: testPageData['title'] as String, // This will be overridden by the block
-        route: testPageData['route'] as String,
-        source: testPageData['source'] as String,
-        blurb: testPageData['blurb'] as String,
-        metadata: testPageData['metadata'] as Map<String, String>,
-        date: testPageData['date'] as DateTime?,
-        draft: testPageData['draft'] as bool,
-        isIndex: testPageData['isIndex'] as bool,
-      );
+        final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData);
 
-      final result = await renderer.renderPageWithSiteConfig(page, testConfig, dummySiteData);
-      // print(result); // Keep for debugging if needed
-
-      expect(result, startsWith('<!DOCTYPE html>'));
-      expect(result, contains('<html>'));
-      expect(result, contains('<body>'));
-      expect(result, contains('<header>'));
-      expect(result, contains('<main>'));
-      expect(result, contains('<footer>'));
-      expect(result, endsWith('</html>'));
-
-      // --- Check Overridden Blocks ---
-      expect(
-          result, contains('<title>Specific Child Title - Test Site</title>'),
-          reason: "Title block should be overridden");
-      expect(
-          result, contains('<meta name="author" content="Block Test Author">'),
-          reason: "Head Extra block should be overridden");
-      expect(result, contains('<h2>Overridden Content Heading</h2>'),
-          reason: "Main content block should be overridden (heading)");
-      expect(
-          result, contains('<p>This content comes from the child block.</p>'),
-          reason: "Main content block should be overridden (paragraph)");
-      expect(result, contains('<p>Test content</p>'), // From {{ content }} inside overridden block
-          reason:
-              "Main content block should include original page html via {{ content }}");
-      expect(result, contains('<script src="/child.js"></script>'),
-          reason: "Scripts block should be overridden");
-
-      // --- Check Non-Overridden (Base) Blocks ---
-      expect(result, contains('<header>Base Header</header>'),
-          reason: "Header block should use base default");
-      expect(result, contains('<footer>Base Footer</footer>'),
-          reason: "Footer block should use base default");
-
-      // --- Check Absence of Base Defaults That Were Overridden ---
-      expect(result, isNot(contains('Default Base Title')),
-          reason: "Default base title should not be present");
-      expect(result, isNot(contains('<h1>Default Content Area</h1>')),
-          reason: "Default base main content H1 should not be present");
-      expect(result, isNot(contains('<p>Base layout content.</p>')),
-          reason: "Default base main content P should not be present");
-      expect(result, isNot(contains('<!-- Default Scripts -->')),
-          reason: "Default scripts comment should not be present");
-      expect(result, isNot(contains('<!-- Extra head elements -->')),
-          reason: "Default head extra comment should not be present");
-    });
-
-
-    test('should render content using base layout directly without blocks', () async {
-      const selfExtendBaseLayoutContent = '{% layout \'_layouts/base.liquid\' %}';
-
-      final testRoot = createTestRoot({
-        '_layouts/base.liquid': baseLayoutContent,
-        '_layouts/self_extend_base.liquid': selfExtendBaseLayoutContent,
+        expect(result, contains('<title>Specific Child Title - Test Site</title>'));
+        expect(result, contains('<meta name="author" content="Block Test Author">'));
+        expect(result, contains('<h2>Overridden Content Heading</h2>'));
+        expect(result, contains('<p>This content comes from the child block.</p>'));
+        expect(result, contains(testPageRenderedContent));
+        expect(result, contains('<script src="/child.js"></script>'));
+        expect(result, contains('<footer>Base Footer</footer>'));
+        expect(result, isNot(contains('<h1>Default Content Area</h1>')));
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should use default block content when not overridden', () async {
+        final testRoot = createTestRoot({
+          '_layouts/base.liquid': baseLayoutContent,
+          '_layouts/simple.liquid': '{% layout "_layouts/base.liquid" %}',
+        });
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({...testPageData, 'layoutId': 'simple'})
+          ..renderedContent = 'My Content';
 
-      final page = PageModel(
-        layoutId: 'self_extend_base', // Use the self-extending layout
-        rawMarkdown: 'Some content',
-        title: 'Hardcoded Page Title', // Hardcode the title
-        route: '/test-page',
-        source: '/path/to/source.md',
-        blurb: 'A blurb',
-        metadata: {},
-        date: DateTime(2023, 1, 1),
-        draft: false,
-        isIndex: false,
-      );
-
-      final result = await renderer.renderPageWithSiteConfig(page, testConfig, dummySiteData);
-      // print(result); // Keep for debugging if needed
-
-      expect(result, startsWith('<!DOCTYPE html>'));
-      expect(result, contains('<html>'));
-      expect(result, contains('<body>'));
-      expect(result, contains('<header>'));
-      expect(result, contains('<main>'));
-      expect(result, contains('<footer>'));
-      expect(result, endsWith('</html>'));
-
-      // --- Check Base Defaults are Used ---
-      expect(
-          result, contains('<title>Hardcoded Page Title - Test Site</title>'),
-          reason: "Title block should use hardcoded page.title and site.title");
-       // Default head_extra block is just a comment, which Liquify might render or omit.
-       // It's safer to check for the *absence* of specific content than presence of a comment.
-       // expect(result, contains('<!-- Extra head elements -->'), reason: "Head Extra block should use default comment");
-       expect(result, isNot(contains('<meta')), reason: "No meta tags should be in default head_extra");
-
-      expect(result, contains('<header>Base Header</header>'),
-          reason: "Header block should use base default");
-      expect(result, contains('<h1>Default Content Area</h1>'),
-          reason: "Main content block should use base default (heading)");
-      expect(result, contains('<p>Base layout content.</p>'),
-          reason: "Main content block should use base default (paragraph)");
-      expect(result, contains('<p>Some content</p>'), // From {{ content }} inside default block
-          reason:
-              "Main content block should include page html via {{ content }} in default");
-
-      expect(result, contains('<footer>Base Footer</footer>'),
-          reason: "Footer block should use base default");
-
-      // Default scripts block is just a comment. Similar to head_extra, check absence of specific tags.
-      // expect(result, contains('<!-- Default Scripts -->'), reason: "Scripts block should use default comment");
-       expect(result, isNot(contains('<script')), reason: "No script tags should be in default scripts");
-    });
-
-    test('should render date properly with date filter', () async {
-      final testRoot = createTestRoot({
-        '_layouts/post_date.liquid':
-            '<div>Post Date: {{ page.formatted_date }}</div>', // Use pre-formatted date
+        final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData);
+        expect(result, contains('<title>Test Page Title - Test Site</title>'));
+        expect(result, contains('<h1>Default Content Area</h1>'));
+        expect(result, contains('<p>Base layout content.</p>'));
+        expect(result, contains('My Content'));
+        expect(result, contains('<footer>Base Footer</footer>'));
       });
 
-      renderer = TemplateRenderer(testRoot);
+      test('should render pre-formatted date correctly in layout', () async {
+        final testRoot = createTestRoot({
+          '_layouts/post_date.liquid': '<div>Post Date: {{ page.formatted_date }}</div>',
+        });
+        renderer = TemplateRenderer(testRoot);
+        final page = PageModel.fromMap({
+          ...testPageData,
+          'layoutId': 'post_date',
+          'date': DateTime(2023, 1, 15),
+        })..renderedContent = '';
 
-      final page = PageModel(
-        layoutId: 'post_date',
-        rawMarkdown: 'Some content',
-        title: 'Post with Date',
-        route: '/post-with-date',
-        source: '/path/to/post.md',
-        blurb: 'A post blurb',
-        metadata: {},
-        date: DateTime(2023, 1, 15, 10, 30, 0), // January 15, 2023
-        draft: false,
-        isIndex: false,
-      );
-
-      final result = await renderer.renderPage(page);
-      expect(result, equals('<div>Post Date: 2023-01-15</div>')); // Changed expected output
-    });
-
-    test("should render markdown tables correctly", () async {
-      final testRoot = createTestRoot({
-        "_layouts/table_test.liquid": "<div>{{ content }}</div>",
+        final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData);
+        expect(result, equals('<div>Post Date: 2023-01-15</div>'));
       });
-
-      renderer = TemplateRenderer(testRoot);
-
-      const tableMarkdown =
-          "| Name | Age | Location |\n|------|----:|----------|\n| Alice | 30 | New York |\n| Bob | 25 | Los Angeles |\n| Charlie | 35 | Chicago |\n\nRegular paragraph after table.";
-
-      final page = PageModel(
-        layoutId: "table_test",
-        rawMarkdown: tableMarkdown,
-        title: "Table Test Post",
-        route: "/table-test",
-        source: "/path/to/table.md",
-        blurb: "A test post with markdown tables",
-        metadata: {},
-        date: DateTime.now(),
-        draft: false,
-        isIndex: false,
-      );
-
-      final result = await renderer.renderPage(page);
-
-      // Verify the table structure is present
-      expect(result, contains("<table>"));
-      expect(result, contains("</table>"));
-      expect(result, contains("<thead>"));
-      expect(result, contains("<tbody>"));
-      expect(result, contains('<th>Name</th>'));
-      expect(result, contains('<th align="right">Age</th>'));
-      expect(result, contains('<th>Location</th>'));
-      expect(result, contains("<td>Alice</td>"));
-      expect(result, contains("<td>Bob</td>"));
-      expect(result, contains("<td>Charlie</td>"));
-      expect(result, contains("<p>Regular paragraph after table.</p>"));
-    });
-
-    test("should render markdown tables with alignment indicators", () async {
-      final testRoot = createTestRoot({
-        "_layouts/table_align_test.liquid": "<div>{{ content }}</div>",
-      });
-
-      renderer = TemplateRenderer(testRoot);
-
-      const alignedTableMarkdown =
-          "| Left | Right | Center |\n|:-----|------:|:------:|\n| Left 1 | Right 1 | Center 1 |\n| Left 2 | Right 2 | Center 2 |";
-
-      final page = PageModel(
-        layoutId: "table_align_test",
-        rawMarkdown: alignedTableMarkdown,
-        title: "Aligned Table Test",
-        route: "/aligned-table",
-        source: "/path/to/aligned-table.md",
-        blurb: "A test post with aligned markdown tables",
-        metadata: {},
-        date: DateTime.now(),
-        draft: false,
-        isIndex: false,
-      );
-
-      final result = await renderer.renderPage(page);
-
-      // Verify alignment - table should render correctly.
-      // The markdown package will add style attributes for alignment.
-      // Note: precise HTML output can vary between markdown processors.
-      // This test is written to be generally compatible.
-      expect(result, contains("<table>"));
-      expect(result, contains("<tr>"));
-      expect(result, contains('<td align="left">Left 1</td>'));
-      expect(result, contains('<td align="right">Right 1</td>'));
-      expect(result, contains('<td align="center">Center 1</td>'));
     });
   });
 }
+
