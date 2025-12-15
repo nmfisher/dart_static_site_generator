@@ -1,12 +1,14 @@
 ---
 title: Welcome Home!
-layout: home # Use the home layout
+layout: custom 
 published: true
 meta:
   description: "The homepage of my awesome blog."
 ---
 
 # Welcome to {{ site.title }}
+
+![logo](assets/logo.png)
 
 This is the homepage. You can find cool stuff here.
 

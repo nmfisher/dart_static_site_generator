@@ -1,0 +1,15 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MY PAGE TITLE</title>
+</head>
+<body>
+
+        {% render '_includes/header.liquid' with site: site %}          
+        {{content}}
+        {% render '_includes/footer.liquid' with site: site %}          
+</body>
+</html>

@@ -17,50 +17,52 @@ class FallbackRoot implements Root {
 
   @override
   Future<Source> resolveAsync(String path) async {
-    final Source source = await primaryRoot.resolveAsync(path);
-    if (!source.content.isEmpty) {
+    try {
+      final Source source = await primaryRoot.resolveAsync(path);
       return source;
-    }
+    } catch (e) {
+      // Primary failed to resolve, try fallback
+      if (logFallbacks) {
+        print(
+            "  -> Primary lookup failed for '$path'. Trying bundled default...");
+      }
 
-    if (logFallbacks) {
-      print(
-          "  -> Primary lookup failed for '$path'. Trying bundled default...");
-    }
+      final Source fallbackSource = await fallbackRoot.resolveAsync(path);
+      if (fallbackSource.content.trim().isEmpty) {
+        throw Exception(
+            "Warning: Resolved template '$path' from fallback, but content is empty.");
+      }
 
-    final Source fallbackSource = await fallbackRoot.resolveAsync(path);
-    if (fallbackSource.content.trim().isEmpty) {
-      throw Exception(
-          "Warning: Resolved template '$path' from fallback, but content is empty.");
+      if (logFallbacks) {
+        print("  -> Using bundled default template for: $path");
+      }
+      return fallbackSource;
     }
-
-    if (logFallbacks) {
-      print("  -> Using bundled default template for: $path");
-    }
-    return fallbackSource;
   }
 
   @override
   Source resolve(String path) {
-    final Source source = primaryRoot.resolve(path);
-    if (!source.content.isEmpty) {
+    try {
+      final Source source = primaryRoot.resolve(path);
       return source;
-    }
+    } catch (e) {
+      // Primary failed to resolve, try fallback
+      if (logFallbacks) {
+        print(
+            "  -> Primary lookup failed for '$path'. Trying bundled default...");
+      }
 
-    if (logFallbacks) {
-      print(
-          "  -> Primary lookup failed for '$path'. Trying bundled default...");
-    }
+      final Source fallbackSource = fallbackRoot.resolve(path);
+      if (fallbackSource.content.trim().isEmpty) {
+        throw Exception(
+            "Warning: Resolved template '$path' from fallback, but content is empty.");
+      }
 
-    final Source fallbackSource = fallbackRoot.resolve(path);
-    if (fallbackSource.content.trim().isEmpty) {
-      throw Exception(
-          "Warning: Resolved template '$path' from fallback, but content is empty.");
+      if (logFallbacks) {
+        print("  -> Using bundled default template for: $path");
+      }
+      return fallbackSource;
     }
-
-    if (logFallbacks) {
-      print("  -> Using bundled default template for: $path");
-    }
-    return fallbackSource;
   }
 
   @override

@@ -2,3 +2,4 @@
 export 'src/config_models.dart';
 export 'src/page_models.dart';
 export 'src/sitemap_generator.dart';
+export 'src/image_processor.dart';

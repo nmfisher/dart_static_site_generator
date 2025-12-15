@@ -1,0 +1,27 @@
+{% layout '_layouts/custom.liquid' %}
+{% block content %}
+<div class="post">
+<h1>{{ page.title | default: "Welcome" }}</h1>
+<div class="time">
+    <time datetime="{{ page.date }}">
+    {{ page.date | date: "d/MM/yyyy" }}
+    </time>
+    <div class="lined-element"></div>
+</div>
+    <article>
+        {{content}}
+    </article>
+    <footer>    
+        <ul>
+        {% for post in site.articles.all %}
+        {% if post.route == page.route %}
+        
+        {% else %}
+        <a href='{{post.route}}'><li>{{post.title}}</li></a>
+        {% endif %}
+        {% endfor %}
+        </ul>
+    </footer>
+</div>
+
+{% endblock %}

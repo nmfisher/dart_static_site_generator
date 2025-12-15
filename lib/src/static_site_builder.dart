@@ -8,11 +8,13 @@ import 'package:file/local.dart';
 import 'package:liquify/liquify.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:blog_builder/src/site_data_model.dart'; // New import
+import 'package:blog_builder/src/webp_html_processor.dart';
 
 class StaticSiteBuilder {
   final String inputDir;
   final String outputDir;
   late ConfigModel siteConfig;
+  late WebPHtmlProcessor webpProcessor;
   late SiteData siteData; // New field
   Root? _templateRoot;
   final TemplateRenderer? _injectedRenderer;
@@ -30,7 +32,9 @@ class StaticSiteBuilder {
     required this.outputDir,
     this.fileSystem = const LocalFileSystem(),
     TemplateRenderer? renderer,
-  }) : _injectedRenderer = renderer;
+  }) : _injectedRenderer = renderer {
+    webpProcessor = WebPHtmlProcessor(fileSystem: fileSystem);
+  }
 
   // Getter for the renderer
   TemplateRenderer get renderer {
@@ -73,6 +77,14 @@ class StaticSiteBuilder {
     await _renderAllPages(pages);
 
     await _copyAssets();
+
+    // Process HTML to replace image references with WebP where available
+    if (siteConfig.imageOptimization.webp.enabled) {
+      print('\nProcessing HTML for WebP references...');
+      final buildDir = fileSystem.directory(outputDir);
+      await webpProcessor.processHtmlDirectory(buildDir);
+      webpProcessor.printSummary();
+    }
 
     if (siteConfig.baseUrl != null && siteConfig.baseUrl!.isNotEmpty) {
       await _generateSitemap(pages);
@@ -446,33 +458,105 @@ class StaticSiteBuilder {
     final outputAssetsDirPath = pathlib.join(outputDir, 'assets');
     final outputAssetsDir = fileSystem.directory(outputAssetsDirPath);
 
+    // Initialize image processor if enabled
+    ImageProcessor? imageProcessor;
+    if (siteConfig.imageOptimization.enabled) {
+      imageProcessor = ImageProcessor(config: siteConfig.imageOptimization);
+      final webpStatus = siteConfig.imageOptimization.webp.enabled ?
+          'WebP: ON (quality: ${siteConfig.imageOptimization.webp.quality})' : 'WebP: OFF';
+      print('Image optimization enabled (PNG level: ${siteConfig.imageOptimization.png.level}, $webpStatus)');
+    }
+
     print('Copying assets from $assetsDirPath to $outputAssetsDirPath...');
 
-    try {
-      if (!await outputAssetsDir.exists()) {
-        await outputAssetsDir.create(recursive: true);
-      }
-      await _copyDirectory(assetsDir, outputAssetsDir);
-      print('Assets copied successfully.');
-    } catch (e) {
-      print('Error during asset copy: $e');
-      // Decide if this should be fatal or just a warning
+    if (!await outputAssetsDir.exists()) {
+      await outputAssetsDir.create(recursive: true);
     }
+    await _copyDirectory(assetsDir, outputAssetsDir, imageProcessor: imageProcessor);
+
+    // Print image processing summary if enabled
+    if (imageProcessor != null) {
+      imageProcessor.stats.printSummary();
+    }
+
+    print('Assets copied successfully.');
   }
 
   // Recursive directory copy helper using the injected fileSystem
-  Future<void> _copyDirectory(Directory source, Directory destination) async {
+  Future<void> _copyDirectory(
+    Directory source,
+    Directory destination, {
+    ImageProcessor? imageProcessor,
+  }) async {
     await for (final entity
         in source.list(recursive: false, followLinks: false)) {
       final newPath =
           pathlib.join(destination.path, pathlib.basename(entity.path));
       if (entity is File) {
-        try {
-          // Use the filesystem's copy method
-          await entity.copy(newPath);
-        } catch (e) {
-          print(
-              '  Warning: Failed to copy file ${entity.path} to $newPath: $e');
+        // Check if this is an image that should be processed
+        if (imageProcessor != null && imageProcessor.isImageFile(entity.path)) {
+          final outputFile = fileSystem.file(newPath);
+
+          // Check if WebP conversion is enabled
+          if (siteConfig.imageOptimization.webp.enabled) {
+            final results = await imageProcessor.processImageWithWebP(
+              entity,
+              outputFile,
+              fileSystem: fileSystem,
+              assetsBasePath: pathlib.join(inputDir, 'assets'),
+            );
+
+            // Register WebP conversions with the HTML processor
+            for (final result in results) {
+              if (result.success && result.outputPath.endsWith('.webp')) {
+                // Calculate relative paths for HTML processing
+                final originalRelative = pathlib.relative(entity.path, from: pathlib.join(inputDir, 'assets'));
+                final webpRelative = pathlib.relative(result.outputPath, from: outputDir);
+                webpProcessor.registerWebPConversion(
+                  pathlib.join('assets', originalRelative),
+                  pathlib.join('assets', pathlib.basename(webpRelative)),
+                );
+              }
+            }
+            for (final result in results) {
+              if (result.success) {
+                if (result.outputPath.endsWith('.webp')) {
+                  print('  -> WebP created: ${pathlib.basename(result.outputPath)} '
+                      '(${ImageProcessingStats.formatBytes(result.originalSize)} → '
+                      '${ImageProcessingStats.formatBytes(result.compressedSize)}, '
+                      '-${result.savingsPercent.toStringAsFixed(1)}%)');
+                } else if (result.savings > 0) {
+                  print('  -> Compressed: ${pathlib.basename(result.outputPath)} '
+                      '(${ImageProcessingStats.formatBytes(result.originalSize)} → '
+                      '${ImageProcessingStats.formatBytes(result.compressedSize)}, '
+                      '-${result.savingsPercent.toStringAsFixed(1)}%)');
+                } else {
+                  print('  -> Copied (no savings): ${pathlib.basename(result.outputPath)}');
+                }
+              } else {
+                print('  -> Warning: ${result.error}');
+              }
+            }
+          } else {
+            // Use regular image processing without WebP
+            final result = await imageProcessor.processImage(entity, outputFile);
+            if (result.success && result.savings > 0) {
+              print('  -> Compressed: ${pathlib.basename(entity.path)} '
+                  '(${ImageProcessingStats.formatBytes(result.originalSize)} → '
+                  '${ImageProcessingStats.formatBytes(result.compressedSize)}, '
+                  '-${result.savingsPercent.toStringAsFixed(1)}%)');
+            } else if (result.success) {
+              print('  -> Copied (no savings): ${pathlib.basename(entity.path)}');
+            }
+          }
+        } else {
+          // Use the filesystem's copy method for non-image files
+          try {
+            await entity.copy(newPath);
+          } catch (e) {
+            print(
+                '  Warning: Failed to copy file ${entity.path} to $newPath: $e');
+          }
         }
       } else if (entity is Directory) {
         // Create the destination subdirectory using the filesystem
@@ -480,7 +564,7 @@ class StaticSiteBuilder {
         try {
           await newDir.create(recursive: true);
           // Recurse into the subdirectory
-          await _copyDirectory(entity, newDir);
+          await _copyDirectory(entity, newDir, imageProcessor: imageProcessor);
         } catch (e) {
           print(
               '  Warning: Failed to create/copy directory ${entity.path} to $newPath: $e');
