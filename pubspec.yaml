@@ -14,6 +14,7 @@ dependencies:
   xml: ^6.3.0    # Added for sitemap generator (though not used in build yet)
   liquify: ^1.0.1
   intl: ^0.20.2 # Updated for compatibility with liquify
+  image: ^4.3.0 # Added for image compression
 
 dev_dependencies:
   lints: ^2.1.0
