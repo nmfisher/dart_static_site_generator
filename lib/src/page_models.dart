@@ -40,7 +40,7 @@ class PageModel {
     }
   }
 
-  factory PageModel.from(File file, Directory baseDir) {
+  factory PageModel.from(File file, Directory baseDir, {bool useFallbackMetaTags = false}) {
     final filePath = file.path;
     final content = file.readAsStringSync();
     final parts = content.split('---');
@@ -86,13 +86,13 @@ class PageModel {
         tempHtmlForBlurb.replaceAll(RegExp(r'<[^>]*>|\s{2,}'), ' ').trim();
     final blurb = plainText.substring(0, min(plainText.length, 200)).trim();
 
+    // Initialize metadata with title tags (always set)
     final metadata = <String, String>{
-      "og:description": blurb,
       "og:title": title.replaceAll('"', '"'),
       "twitter:title": title.replaceAll('"', '"'),
-      "twitter:description": blurb,
     };
 
+    // Parse meta tags from frontmatter (these override defaults)
     if (doc["meta"] != null && doc["meta"] is YamlMap) {
       try {
         for (final key in doc["meta"].keys) {
@@ -102,6 +102,41 @@ class PageModel {
         print(
             "Warning: Could not parse 'meta' section in frontmatter for $filePath: $e");
       }
+    }
+
+    // Apply fallback meta tags if enabled and not already specified
+    if (useFallbackMetaTags) {
+      // Use first paragraph for description if not specified
+      if (!metadata.containsKey("og:description") || metadata["og:description"]!.isEmpty) {
+        final firstPara = _extractFirstParagraph(markdownContent);
+        if (firstPara != null) {
+          metadata["og:description"] = firstPara;
+        }
+      }
+
+      if (!metadata.containsKey("twitter:description") || metadata["twitter:description"]!.isEmpty) {
+        // Use og:description if set, otherwise extract first paragraph
+        if (metadata.containsKey("og:description") && metadata["og:description"]!.isNotEmpty) {
+          metadata["twitter:description"] = metadata["og:description"]!;
+        } else {
+          final firstPara = _extractFirstParagraph(markdownContent);
+          if (firstPara != null) {
+            metadata["twitter:description"] = firstPara;
+          }
+        }
+      }
+
+      // Use first image for og:image if not specified
+      if (!metadata.containsKey("og:image") || metadata["og:image"]!.isEmpty) {
+        final firstImage = _extractFirstImage(markdownContent);
+        if (firstImage != null) {
+          metadata["og:image"] = firstImage;
+        }
+      }
+    } else {
+      // When fallback is disabled, use blurb as default description
+      metadata.putIfAbsent("og:description", () => blurb);
+      metadata.putIfAbsent("twitter:description", () => blurb);
     }
 
     var route = doc["url"]?.toString() ?? doc["route"]?.toString();
@@ -242,6 +277,58 @@ class PageModel {
 
   static String _capitalize(String s) =>
       s.isEmpty ? '' : s[0].toUpperCase() + s.substring(1);
+
+  /// Extracts the first paragraph from markdown content for use as meta description
+  static String? _extractFirstParagraph(String markdownContent) {
+    if (markdownContent.trim().isEmpty) return null;
+
+    // Convert markdown to HTML to get plain text
+    final html = md.markdownToHtml(markdownContent,
+        inlineSyntaxes: [md.InlineHtmlSyntax()]);
+
+    // Strip HTML tags and clean up whitespace
+    final plainText = html.replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (plainText.isEmpty) return null;
+
+    // Split by paragraph breaks (double newlines or period followed by space)
+    // Take the first meaningful paragraph
+    final paragraphs = plainText.split(RegExp(r'\n\n|\. '));
+    for (final para in paragraphs) {
+      final cleaned = para.trim();
+      // Return first paragraph with at least 20 characters
+      if (cleaned.length >= 20) {
+        // Limit to ~200 characters for meta description
+        return cleaned.substring(0, min(cleaned.length, 200)).trim();
+      }
+    }
+
+    // Fallback: return first 200 chars if no good paragraph found
+    return plainText.substring(0, min(plainText.length, 200)).trim();
+  }
+
+  /// Extracts the first image URL from markdown content for use as og:image
+  static String? _extractFirstImage(String markdownContent) {
+    if (markdownContent.trim().isEmpty) return null;
+
+    // Match markdown image syntax: ![alt](url)
+    final markdownImageRegex = RegExp(r'!\[([^\]]*)\]\(([^)]+)\)');
+    final markdownMatch = markdownImageRegex.firstMatch(markdownContent);
+    if (markdownMatch != null) {
+      return markdownMatch.group(2)?.trim();
+    }
+
+    // Match HTML img tags: <img src="url" ... >
+    final htmlImageRegex = RegExp(r'<img[^>]+src=["\']([^"\']+)["\']', caseSensitive: false);
+    final htmlMatch = htmlImageRegex.firstMatch(markdownContent);
+    if (htmlMatch != null) {
+      return htmlMatch.group(1)?.trim();
+    }
+
+    return null;
+  }
 }
 
 class PageIndexPageModel extends PageModel {

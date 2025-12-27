@@ -9,6 +9,7 @@ class ConfigModel {
   final Map<String, String> metadata; // Keep original type here
   final String? baseUrl;
   final ImageOptimizationConfig imageOptimization;
+  final bool fallbackMetaTags; // If true, use first paragraph/image for meta tags when not specified
 
   ConfigModel({
     this.title,
@@ -16,6 +17,7 @@ class ConfigModel {
     this.owner,
     this.baseUrl,
     ImageOptimizationConfig? imageOptimization,
+    this.fallbackMetaTags = false,
   }) : imageOptimization = imageOptimization ?? ImageOptimizationConfig();
 
   factory ConfigModel.parse(File configFile) {
@@ -63,12 +65,19 @@ class ConfigModel {
       }
     }
 
+    // Parse fallback meta tags option
+    bool fallbackMetaTags = false;
+    if (cfg.containsKey("fallback_meta_tags")) {
+      fallbackMetaTags = cfg["fallback_meta_tags"] == true;
+    }
+
     return ConfigModel(
         title: cfg["title"]?.toString(), // Safe access
         metadata: metadata, // Store as Map initially
         owner: cfg["owner"]?.toString(),
         baseUrl: cfg["baseUrl"]?.toString(),
         imageOptimization: imageOptConfig,
+        fallbackMetaTags: fallbackMetaTags,
         );
   }
 

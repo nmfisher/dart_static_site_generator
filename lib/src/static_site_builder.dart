@@ -234,7 +234,7 @@ class StaticSiteBuilder {
       try {
         final relativePath = pathlib.relative(file.path, from: inputDir);
         print('Parsing: $relativePath');
-        final pageModel = PageModel.from(file, contentDir);
+        final pageModel = PageModel.from(file, contentDir, useFallbackMetaTags: siteConfig.fallbackMetaTags);
         if (pageModel.draft) {
           print('  -> Skipping draft page: ${pageModel.route}');
         } else {
