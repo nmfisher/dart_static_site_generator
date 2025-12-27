@@ -9,6 +9,7 @@ import 'package:liquify/liquify.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:blog_builder/src/site_data_model.dart'; // New import
 import 'package:blog_builder/src/webp_html_processor.dart';
+import 'package:blog_builder/src/tools/at_proto_announcer.dart';
 
 class StaticSiteBuilder {
   final String inputDir;
@@ -66,10 +67,20 @@ class StaticSiteBuilder {
       setupRenderer(_templateRoot!);
     }
 
-    final List<PageModel> pages = await _parseContent();
+    List<PageModel> pages = await _parseContent();
 
     await _generateIndexPages(
         fileSystem.directory(pathlib.join(inputDir, 'content')), pages);
+
+    // Create anchor posts for AT Protocol comments
+    if (siteConfig.atProto.enabled && siteConfig.baseUrl != null) {
+      print('\nEnsuring AT Protocol anchor posts...');
+      final announcer = AtProtoAnnouncer(config: siteConfig.atProto);
+      pages = await announcer.ensureAnchorPosts(
+        pages: pages,
+        baseUrl: siteConfig.baseUrl!,
+      );
+    }
 
     // Build the hierarchical site data after all pages (including generated index pages) are parsed
     siteData = _buildSiteData(pages);
@@ -479,7 +490,73 @@ class StaticSiteBuilder {
       imageProcessor.stats.printSummary();
     }
 
+    // Copy bundled AT Protocol assets if enabled
+    if (siteConfig.atProto.enabled) {
+      await _copyBundledAtProtoAssets();
+    }
+
     print('Assets copied successfully.');
+  }
+
+  Future<void> _copyBundledAtProtoAssets() async {
+    print('\nCopying bundled AT Protocol assets...');
+
+    try {
+      // Resolve the package URI to find bundled assets
+      final packageUri = Uri.parse('package:blog_builder/src/defaults/assets/');
+      final resolvedUri = await Isolate.resolvePackageUri(packageUri);
+
+      if (resolvedUri == null) {
+        print('Warning: Could not resolve bundled assets URI');
+        return;
+      }
+
+      final bundledAssetsPath = resolvedUri.toFilePath();
+      final bundledAssetsDir = fileSystem.directory(bundledAssetsPath);
+
+      if (!await bundledAssetsDir.exists()) {
+        print('Warning: Bundled assets directory not found at $bundledAssetsPath');
+        return;
+      }
+
+      // Copy JS files
+      final jsSourcePath = pathlib.join(bundledAssetsPath, 'js', 'at_comments.js');
+      final jsSourceFile = fileSystem.file(jsSourcePath);
+
+      if (await jsSourceFile.exists()) {
+        final jsDestPath = pathlib.join(outputDir, 'assets', 'js', 'at_comments.js');
+        final jsDestDir = fileSystem.directory(pathlib.dirname(jsDestPath));
+
+        if (!await jsDestDir.exists()) {
+          await jsDestDir.create(recursive: true);
+        }
+
+        final jsDestFile = fileSystem.file(jsDestPath);
+        await jsDestFile.writeAsString(await jsSourceFile.readAsString());
+        print('  -> Copied: at_comments.js');
+      }
+
+      // Copy CSS files
+      final cssSourcePath = pathlib.join(bundledAssetsPath, 'css', 'at_comments.css');
+      final cssSourceFile = fileSystem.file(cssSourcePath);
+
+      if (await cssSourceFile.exists()) {
+        final cssDestPath = pathlib.join(outputDir, 'assets', 'css', 'at_comments.css');
+        final cssDestDir = fileSystem.directory(pathlib.dirname(cssDestPath));
+
+        if (!await cssDestDir.exists()) {
+          await cssDestDir.create(recursive: true);
+        }
+
+        final cssDestFile = fileSystem.file(cssDestPath);
+        await cssDestFile.writeAsString(await cssSourceFile.readAsString());
+        print('  -> Copied: at_comments.css');
+      }
+
+      print('AT Protocol assets copied successfully.');
+    } catch (e) {
+      print('Warning: Failed to copy bundled AT Protocol assets: $e');
+    }
   }
 
   // Recursive directory copy helper using the injected fileSystem

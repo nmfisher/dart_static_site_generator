@@ -3,6 +3,58 @@ import 'dart:io';
 import 'package:yaml/yaml.dart';
 import 'package:blog_builder/src/image_processor.dart';
 
+/// Configuration for AT Protocol comment system
+class AtProtoConfig {
+  final bool enabled;
+  final String? serviceIdentifier;  // The bot account handle
+  final String? servicePassword;    // App password (supports env var)
+  final String pdsUrl;              // PDS endpoint (write)
+  final String appViewUrl;          // AppView endpoint (read)
+
+  AtProtoConfig({
+    this.enabled = false,
+    this.serviceIdentifier,
+    this.servicePassword,
+    this.pdsUrl = 'bsky.social',
+    this.appViewUrl = 'https://public.api.bsky.app',
+  });
+
+  factory AtProtoConfig.parse(Map<String, dynamic>? configMap) {
+    if (configMap == null) {
+      return AtProtoConfig();
+    }
+
+    return AtProtoConfig(
+      enabled: configMap['enabled'] == true,
+      serviceIdentifier: configMap['service_identifier']?.toString(),
+      servicePassword: configMap['service_password']?.toString(),
+      pdsUrl: configMap['pds_url']?.toString() ?? 'bsky.social',
+      appViewUrl: configMap['app_view_url']?.toString() ?? 'https://public.api.bsky.app',
+    );
+  }
+
+  /// Resolve environment variable syntax ${VAR_NAME}
+  String? resolvePassword() {
+    if (servicePassword == null) return null;
+
+    final match = RegExp(r'^\$\{(\w+)\}$').firstMatch(servicePassword!);
+    if (match != null) {
+      final varName = match.group(1)!;
+      return Platform.environment[varName];
+    }
+    return servicePassword;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'enabled': enabled,
+      'service_identifier': serviceIdentifier,
+      'pds_url': pdsUrl,
+      'app_view_url': appViewUrl,
+    };
+  }
+}
+
 class ConfigModel {
   final String? title;
   final String? owner;
@@ -10,6 +62,7 @@ class ConfigModel {
   final String? baseUrl;
   final ImageOptimizationConfig imageOptimization;
   final bool fallbackMetaTags; // If true, use first paragraph/image for meta tags when not specified
+  final AtProtoConfig atProto; // AT Protocol comment system configuration
 
   ConfigModel({
     this.title,
@@ -18,7 +71,9 @@ class ConfigModel {
     this.baseUrl,
     ImageOptimizationConfig? imageOptimization,
     this.fallbackMetaTags = false,
-  }) : imageOptimization = imageOptimization ?? ImageOptimizationConfig();
+    AtProtoConfig? atProto,
+  }) : imageOptimization = imageOptimization ?? ImageOptimizationConfig(),
+       atProto = atProto ?? AtProtoConfig();
 
   factory ConfigModel.parse(File configFile) {
     final content = configFile.readAsStringSync();
@@ -71,6 +126,15 @@ class ConfigModel {
       fallbackMetaTags = cfg["fallback_meta_tags"] == true;
     }
 
+    // Parse AT Protocol config
+    AtProtoConfig? atProtoConfig;
+    if (cfg.containsKey("at_proto")) {
+      final atProtoMap = cfg["at_proto"];
+      if (atProtoMap is YamlMap) {
+        atProtoConfig = AtProtoConfig.parse(_yamlMapToMap(atProtoMap));
+      }
+    }
+
     return ConfigModel(
         title: cfg["title"]?.toString(), // Safe access
         metadata: metadata, // Store as Map initially
@@ -78,6 +142,7 @@ class ConfigModel {
         baseUrl: cfg["baseUrl"]?.toString(),
         imageOptimization: imageOptConfig,
         fallbackMetaTags: fallbackMetaTags,
+        atProto: atProtoConfig,
         );
   }
 
@@ -104,6 +169,7 @@ class ConfigModel {
       'owner': owner,
       // CHANGE: Pass metadata directly as a Map
       'metadata': metadata,
+      'at_proto': atProto.toMap(),
     };
   }
 }

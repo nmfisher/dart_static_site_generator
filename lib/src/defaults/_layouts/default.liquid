@@ -10,6 +10,10 @@
 
     <link rel="stylesheet" href="/assets/style.css">
 
+    {% if site.at_proto.enabled %}
+    <link rel="stylesheet" href="/assets/css/at_comments.css">
+    {% endif %}
+
     {% block head_extra %}{% endblock %}
 
 </head>
@@ -25,6 +29,10 @@
     </main>
 
     {% render '_includes/footer.liquid' %}
+
+    {% if site.at_proto.enabled %}
+    <script src="/assets/js/at_comments.js"></script>
+    {% endif %}
 
     {% block scripts %}
     {% endblock %}

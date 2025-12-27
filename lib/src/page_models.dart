@@ -17,6 +17,7 @@ class PageModel {
   final String source; // Original file path
   final bool draft;
   final bool isIndex; // Is this an auto-generated index page?
+  final String? atUri; // AT Protocol URI for comment thread
   String? renderedContent;
 
   PageModel(
@@ -30,7 +31,8 @@ class PageModel {
       this.layoutId,
       this.templateId,
       this.date,
-      this.isIndex = false}) {
+      this.isIndex = false,
+      this.atUri}) {
     if (route.isEmpty && !isIndex) {
       throw ArgumentError.value(
           route, 'route', "Route cannot be empty (source $source)");
@@ -173,6 +175,8 @@ class PageModel {
 
     print("Parsed ${file.path} -> route: $route");
 
+    final atUri = doc["at_uri"]?.toString();
+
     return PageModel(
         rawMarkdown: markdownContent,
         source: filePath,
@@ -183,7 +187,8 @@ class PageModel {
         date: date,
         blurb: blurb,
         metadata: metadata,
-        draft: doc["published"] != true);
+        draft: doc["published"] != true,
+        atUri: atUri);
   }
 
   factory PageModel.index(
@@ -255,6 +260,7 @@ class PageModel {
       layoutId: data['layoutId'],
       templateId: data['templateId'],
       isIndex: data['isIndex'] ?? false,
+      atUri: data['atUri'],
     );
   }
 
@@ -272,7 +278,40 @@ class PageModel {
       'isIndex': isIndex,
       'raw_markdown': rawMarkdown,
       'rendered_content': renderedContent,
+      'at_uri': atUri,
     };
+  }
+
+  /// Create a copy of this PageModel with specified fields replaced
+  PageModel copyWith({
+    String? layoutId,
+    String? templateId,
+    String? title,
+    String? route,
+    Map<String, String>? metadata,
+    String? rawMarkdown,
+    DateTime? date,
+    String? blurb,
+    String? source,
+    bool? draft,
+    bool? isIndex,
+    String? atUri,
+    String? renderedContent,
+  }) {
+    return PageModel(
+      layoutId: layoutId ?? this.layoutId,
+      templateId: templateId ?? this.templateId,
+      title: title ?? this.title,
+      route: route ?? this.route,
+      metadata: metadata ?? this.metadata,
+      rawMarkdown: rawMarkdown ?? this.rawMarkdown,
+      date: date ?? this.date,
+      blurb: blurb ?? this.blurb,
+      source: source ?? this.source,
+      draft: draft ?? this.draft,
+      isIndex: isIndex ?? this.isIndex,
+      atUri: atUri ?? this.atUri,
+    )..renderedContent = renderedContent ?? this.renderedContent;
   }
 
   static String _capitalize(String s) =>
@@ -346,7 +385,8 @@ class PageIndexPageModel extends PageModel {
       super.templateId = "index",
       super.draft = false,
       super.isIndex = true,
-      super.date});
+      super.date,
+      super.atUri});
 
   @override
   Map<String, dynamic> toMap() {
@@ -388,6 +428,7 @@ class PageIndexPageModel extends PageModel {
       layoutId: data['layoutId'],
       templateId: data['templateId'],
       date: data['date'],
+      atUri: data['atUri'],
     );
   }
 }

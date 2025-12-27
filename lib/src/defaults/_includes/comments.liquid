@@ -1,0 +1,23 @@
+{% if page.at_uri %}
+<section id="comments-section" class="at-comments">
+  <h2>Comments</h2>
+  <div id="comments-container">
+    <noscript>
+      <p>Comments are loaded via JavaScript. <a href="https://bsky.app">View on Bluesky</a></p>
+    </noscript>
+    <div id="comments-loading">Loading comments...</div>
+  </div>
+</section>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof AtComments !== 'undefined') {
+      new AtComments(
+        'comments-container',
+        '{{ page.at_uri }}',
+        '{{ site.at_proto.app_view_url }}'
+      ).load();
+    }
+  });
+</script>
+{% endif %}

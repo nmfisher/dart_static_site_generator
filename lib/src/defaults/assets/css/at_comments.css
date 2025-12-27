@@ -1,0 +1,158 @@
+/* AT Protocol Comments Styles */
+.at-comments {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.at-comments h2 {
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+  color: #111827;
+}
+
+.at-comment {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: #f9fafb;
+  border-radius: 8px;
+  border-left: 3px solid #3b82f6;
+}
+
+.at-comment-depth-1 { margin-left: 1.5rem; }
+.at-comment-depth-2 { margin-left: 3rem; }
+.at-comment-depth-3 { margin-left: 4.5rem; }
+.at-comment-depth-4 { margin-left: 6rem; }
+.at-comment-depth-5 { margin-left: 7.5rem; }
+
+.at-comment-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.at-comment-author {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.at-comment-author:hover {
+  text-decoration: underline;
+}
+
+.at-comment-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.at-comment-displayname {
+  font-weight: 600;
+  color: #111827;
+}
+
+.at-comment-handle {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.at-comment-time {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin-left: auto;
+}
+
+.at-comment-content {
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #374151;
+}
+
+.at-comment-actions {
+  margin-top: 0.75rem;
+}
+
+.at-comment-reply-link {
+  font-size: 0.875rem;
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.at-comment-reply-link:hover {
+  text-decoration: underline;
+}
+
+.at-comment-replies {
+  margin-top: 1rem;
+}
+
+.at-comments-empty,
+.at-comments-error {
+  text-align: center;
+  padding: 2rem;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.at-comment-cta {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #3b82f6;
+  color: white;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.at-comment-cta:hover {
+  background: #2563eb;
+}
+
+#comments-loading {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .at-comments {
+    border-top-color: #374151;
+  }
+
+  .at-comments h2 {
+    color: #f9fafb;
+  }
+
+  .at-comment {
+    background: #1f2937;
+    border-left-color: #60a5fa;
+  }
+
+  .at-comment-displayname {
+    color: #f9fafb;
+  }
+
+  .at-comment-handle,
+  .at-comment-time {
+    color: #9ca3af;
+  }
+
+  .at-comment-content {
+    color: #d1d5db;
+  }
+
+  .at-comments-empty,
+  .at-comments-error {
+    background: #1f2937;
+    color: #d1d5db;
+  }
+}
