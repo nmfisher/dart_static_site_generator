@@ -321,7 +321,7 @@ class PageModel {
     }
 
     // Match HTML img tags: <img src="url" ... >
-    final htmlImageRegex = RegExp(r'<img[^>]+src=["\']([^"\']+)["\']', caseSensitive: false);
+    final htmlImageRegex = RegExp("<img[^>]+src=[\"']([^\"']+)[\"']", caseSensitive: false);
     final htmlMatch = htmlImageRegex.firstMatch(markdownContent);
     if (htmlMatch != null) {
       return htmlMatch.group(1)?.trim();

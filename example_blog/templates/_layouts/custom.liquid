@@ -4,7 +4,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MY PAGE TITLE</title>
+    <title>{{ page.title | default: 'Untitled' }} - {{ site.title | default: 'My Website' }}</title>
+
+    <!-- Open Graph / Facebook -->
+    {% if page.metadata["og:title"] %}
+    <meta property="og:title" content="{{ page.metadata["og:title"] }}" />
+    {% endif %}
+    {% if page.metadata["og:description"] %}
+    <meta property="og:description" content="{{ page.metadata["og:description"] }}" />
+    {% endif %}
+    {% if page.metadata["og:image"] %}
+    <meta property="og:image" content="{{ page.metadata["og:image"] }}" />
+    {% endif %}
+    {% if page.metadata["og:url"] %}
+    <meta property="og:url" content="{{ page.metadata["og:url"] }}" />
+    {% endif %}
+    {% if page.metadata["og:type"] %}
+    <meta property="og:type" content="{{ page.metadata["og:type"] }}" />
+    {% endif %}
+
+    <!-- Twitter -->
+    {% if page.metadata["twitter:card"] %}
+    <meta name="twitter:card" content="{{ page.metadata["twitter:card"] }}" />
+    {% endif %}
+    {% if page.metadata["twitter:title"] %}
+    <meta name="twitter:title" content="{{ page.metadata["twitter:title"] }}" />
+    {% endif %}
+    {% if page.metadata["twitter:description"] %}
+    <meta name="twitter:description" content="{{ page.metadata["twitter:description"] }}" />
+    {% endif %}
+    {% if page.metadata["twitter:image"] %}
+    <meta name="twitter:image" content="{{ page.metadata["twitter:image"] }}" />
+    {% endif %}
 </head>
 <body>
 
