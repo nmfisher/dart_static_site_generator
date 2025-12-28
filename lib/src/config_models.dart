@@ -6,17 +6,15 @@ import 'package:blog_builder/src/image_processor.dart';
 /// Configuration for AT Protocol comment system
 class AtProtoConfig {
   final bool enabled;
-  final String? serviceIdentifier;  // The bot account handle
-  final String? servicePassword;    // App password (supports env var)
-  final String pdsUrl;              // PDS endpoint (write)
+  final String? serviceIdentifier;  // The bot account handle (for server-side posting)
   final String appViewUrl;          // AppView endpoint (read)
+  final String? turnstileSiteKey;   // Cloudflare Turnstile site key for captcha
 
   AtProtoConfig({
     this.enabled = false,
     this.serviceIdentifier,
-    this.servicePassword,
-    this.pdsUrl = 'bsky.social',
     this.appViewUrl = 'https://public.api.bsky.app',
+    this.turnstileSiteKey,
   });
 
   factory AtProtoConfig.parse(Map<String, dynamic>? configMap) {
@@ -27,30 +25,17 @@ class AtProtoConfig {
     return AtProtoConfig(
       enabled: configMap['enabled'] == true,
       serviceIdentifier: configMap['service_identifier']?.toString(),
-      servicePassword: configMap['service_password']?.toString(),
-      pdsUrl: configMap['pds_url']?.toString() ?? 'bsky.social',
       appViewUrl: configMap['app_view_url']?.toString() ?? 'https://public.api.bsky.app',
+      turnstileSiteKey: configMap['turnstile_site_key']?.toString(),
     );
-  }
-
-  /// Resolve environment variable syntax ${VAR_NAME}
-  String? resolvePassword() {
-    if (servicePassword == null) return null;
-
-    final match = RegExp(r'^\$\{(\w+)\}$').firstMatch(servicePassword!);
-    if (match != null) {
-      final varName = match.group(1)!;
-      return Platform.environment[varName];
-    }
-    return servicePassword;
   }
 
   Map<String, dynamic> toMap() {
     return {
       'enabled': enabled,
       'service_identifier': serviceIdentifier,
-      'pds_url': pdsUrl,
       'app_view_url': appViewUrl,
+      'turnstile_site_key': turnstileSiteKey,
     };
   }
 }
@@ -169,6 +154,7 @@ class ConfigModel {
       'owner': owner,
       // CHANGE: Pass metadata directly as a Map
       'metadata': metadata,
+      'baseUrl': baseUrl,
       'at_proto': atProto.toMap(),
     };
   }

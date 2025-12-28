@@ -9,14 +9,19 @@
   </div>
 </section>
 
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-    if (typeof AtComments !== 'undefined') {
-      new AtComments(
+  document.addEventListener('DOMContentLoaded', async function() {
+    if (typeof AtCommentsWidget !== 'undefined') {
+      window.atCommentsInstance = new AtCommentsWidget(
         'comments-container',
         '{{ page.at_uri }}',
-        '{{ site.at_proto.app_view_url }}'
-      ).load();
+        '{{ site.at_proto.app_view_url }}',
+        '{{ site.at_proto.turnstile_site_key }}'
+      );
+      await window.atCommentsInstance.load();
+    } else {
+      console.error('AtCommentsWidget not loaded');
     }
   });
 </script>

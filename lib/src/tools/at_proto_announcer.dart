@@ -28,9 +28,12 @@ class AtProtoAnnouncer {
       return pages;
     }
 
-    final password = config.resolvePassword();
-    if (config.serviceIdentifier == null || password == null) {
-      print('Warning: AT Protocol enabled but credentials not configured');
+    // Read credentials from environment variables (more secure than config file)
+    final identifier = config.serviceIdentifier ?? Platform.environment['BSKY_IDENTIFIER'];
+    final password = Platform.environment['BSKY_PASSWORD'];
+
+    if (identifier == null || password == null) {
+      print('Note: BSKY_IDENTIFIER/BSKY_PASSWORD not set, skipping anchor post creation');
       return pages;
     }
 
@@ -46,7 +49,7 @@ class AtProtoAnnouncer {
 
     bsky.Bluesky? session;
     try {
-      session = await _authenticate(password);
+      session = await _authenticate(identifier, password);
 
       final updatedPages = <PageModel>[];
       for (final page in pages) {
@@ -74,16 +77,16 @@ class AtProtoAnnouncer {
   }
 
   /// Authenticate with the PDS using service credentials
-  Future<bsky.Bluesky> _authenticate(String password) async {
+  Future<bsky.Bluesky> _authenticate(String identifier, String password) async {
     final sessionResponse = await bsky.createSession(
-      identifier: config.serviceIdentifier!,
+      identifier: identifier,
       password: password,
-      service: config.pdsUrl,
+      service: 'bsky.social',
     );
 
     final session = await bsky.Bluesky.fromSession(sessionResponse.data);
 
-    print('Authenticated as ${config.serviceIdentifier}');
+    print('Authenticated as $identifier');
     return session;
   }
 

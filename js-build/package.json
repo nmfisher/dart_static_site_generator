@@ -1,0 +1,11 @@
+{
+  "name": "at-comments-widget",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/at_comments.js --bundle --format=iife --global-name=AtComments --outfile=../lib/src/defaults/assets/js/at_comments.js --sourcemap"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
