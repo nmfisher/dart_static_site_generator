@@ -1,5 +1,4 @@
 // lib/src/webp_html_processor.dart
-import 'dart:io';
 import 'package:file/file.dart';
 import 'package:path/path.dart' as path;
 
@@ -35,57 +34,68 @@ class WebPHtmlProcessor {
 
   /// Process HTML content to replace img tags with picture elements where WebP is available
   String processHtml(String html, {String basePath = ''}) {
-    // Use string manipulation approach instead of complex regex
     var result = html;
 
     _webpMappings.forEach((originalPath, webpPath) {
-      // Look for img tags with the original image src
-      final searchPattern = 'src="$originalPath"';
-      final searchPattern2 = "src='$originalPath'";
+      // Look for img tags with the original image src (both quote styles, with or without leading slash)
+      final patterns = [
+        'src="$originalPath"',
+        "src='$originalPath'",
+        'src="/$originalPath"',
+        "src='/$originalPath'",
+      ];
 
-      if (result.contains(searchPattern) || result.contains(searchPattern2)) {
-        // Find the img tag
-        final imgTagStart = result.indexOf('<img');
-        while (imgTagStart != -1) {
-          final imgTagEnd = result.indexOf('>', imgTagStart);
-          if (imgTagEnd == -1) break;
+      // Keep replacing until no more matches are found
+      var searchStart = 0;
+      while (searchStart < result.length) {
+        // Find the next img tag
+        final imgTagStart = result.indexOf('<img', searchStart);
+        if (imgTagStart == -1) break;
 
-          final imgTag = result.substring(imgTagStart, imgTagEnd + 1);
+        final imgTagEnd = result.indexOf('>', imgTagStart);
+        if (imgTagEnd == -1) break;
 
-          // Check if this img tag contains our src
-          if (imgTag.contains(searchPattern) || imgTag.contains(searchPattern2)) {
-            // Extract alt attribute
-            var alt = '';
-            final altStart = imgTag.indexOf('alt="');
-            if (altStart != -1) {
-              final altValueStart = altStart + 5;
-              final altValueEnd = imgTag.indexOf('"', altValueStart);
-              if (altValueEnd != -1) {
-                alt = imgTag.substring(altValueStart, altValueEnd);
-              }
+        final imgTag = result.substring(imgTagStart, imgTagEnd + 1);
+
+        // Check if this img tag contains any of our src patterns
+        final matchesPattern = patterns.any((p) => imgTag.contains(p));
+
+        if (matchesPattern) {
+          // Extract all attributes except src from the original img tag
+          final attrRegex = RegExp(r'''(\w+)=["']([^"']*)["']''');
+          final attributes = <String, String>{};
+          for (final match in attrRegex.allMatches(imgTag)) {
+            final name = match.group(1)!;
+            final value = match.group(2)!;
+            if (name != 'src') {
+              attributes[name] = value;
             }
-
-            // Create the new picture element
-            final normalizedWebpPath = webpPath.startsWith('/') ? webpPath : '/$webpPath';
-            final normalizedOriginalPath = originalPath.startsWith('/') ? originalPath : '/$originalPath';
-
-            final pictureElement = '<picture>\n'
-                                 '  <source srcset="$normalizedWebpPath" type="image/webp">\n'
-                                 '  <img src="$normalizedOriginalPath" alt="$alt">\n'
-                                 '</picture>';
-
-            // Replace the img tag
-            result = result.substring(0, imgTagStart) +
-                     pictureElement +
-                     result.substring(imgTagEnd + 1);
-
-            // Adjust position since we replaced the tag
-            break;
           }
 
-          // Look for next img tag
-          final nextImgStart = result.indexOf('<img', imgTagStart + 1);
-          if (nextImgStart == -1) break;
+          // Build attributes string for the new img tag
+          final normalizedWebpPath = webpPath.startsWith('/') ? webpPath : '/$webpPath';
+          final normalizedOriginalPath = originalPath.startsWith('/') ? originalPath : '/$originalPath';
+
+          final attrString = attributes.entries
+              .map((e) => '${e.key}="${e.value}"')
+              .join(' ');
+          final imgAttrs = attrString.isNotEmpty ? ' $attrString' : '';
+
+          final pictureElement = '<picture>\n'
+                               '  <source srcset="$normalizedWebpPath" type="image/webp">\n'
+                               '  <img src="$normalizedOriginalPath"$imgAttrs>\n'
+                               '</picture>';
+
+          // Replace the img tag
+          result = result.substring(0, imgTagStart) +
+                   pictureElement +
+                   result.substring(imgTagEnd + 1);
+
+          // Continue searching after the inserted picture element
+          searchStart = imgTagStart + pictureElement.length;
+        } else {
+          // Move past this img tag
+          searchStart = imgTagEnd + 1;
         }
       }
     });
