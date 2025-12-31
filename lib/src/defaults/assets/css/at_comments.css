@@ -5,6 +5,27 @@
   border-top: 1px solid #e5e7eb;
 }
 
+/* Captcha Gate */
+.at-captcha-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.at-captcha-gate-text {
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.at-comments-turnstile-gate {
+  display: flex;
+  justify-content: center;
+}
+
 .at-comments h2 {
   margin-bottom: 1.5rem;
   font-size: 1.5rem;
@@ -383,6 +404,14 @@
 
   .at-comments h2 {
     color: #f9fafb;
+  }
+
+  .at-captcha-gate {
+    background: #1f2937;
+  }
+
+  .at-captcha-gate-text {
+    color: #9ca3af;
   }
 
   .at-comment-login-form {
