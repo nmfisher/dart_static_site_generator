@@ -99,6 +99,11 @@ class StaticSiteBuilder {
 
     if (siteConfig.baseUrl != null && siteConfig.baseUrl!.isNotEmpty) {
       await _generateSitemap(pages);
+
+      // Generate RSS feed
+      if (siteConfig.rss.enabled) {
+        await _generateRSSFeed(pages);
+      }
     } else {
       print(
           '\nSkipping sitemap generation: baseUrl not set or empty in config.yaml');
@@ -687,6 +692,22 @@ class StaticSiteBuilder {
     } catch (e) {
       // Error message handled inside SitemapGenerator, just re-log here if needed
       print('Error occurred during sitemap generation step: $e');
+    }
+  }
+
+  Future<void> _generateRSSFeed(List<PageModel> pages) async {
+    print('\nGenerating RSS feed...');
+    final rssFile = pathlib.join(outputDir, siteConfig.rss.fileName);
+    try {
+      await RSSGenerator.generateFromPageModels(
+        pages,
+        siteConfig,
+        outFile: rssFile,
+        fileSystem: fileSystem,
+      );
+    } catch (e) {
+      // Error message handled inside RSSGenerator, just re-log here if needed
+      print('Error occurred during RSS generation step: $e');
     }
   }
 

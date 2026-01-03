@@ -3,6 +3,64 @@ import 'dart:io';
 import 'package:yaml/yaml.dart';
 import 'package:blog_builder/src/image_processor.dart';
 
+/// Configuration for RSS feed generation
+class RssConfig {
+  final bool enabled;
+  final String? title;        // Override site title
+  final String? description;  // Override site description
+  final String fileName;      // Output filename (default: "feed.xml")
+  final List<String> layouts; // Which layouts to include (empty = all)
+  final int? itemLimit;       // Max items in feed (null = unlimited)
+
+  RssConfig({
+    this.enabled = false,
+    this.title,
+    this.description,
+    this.fileName = 'feed.xml',
+    this.layouts = const [],
+    this.itemLimit,
+  });
+
+  factory RssConfig.parse(Map<String, dynamic>? configMap) {
+    if (configMap == null) {
+      return RssConfig();
+    }
+
+    // Parse layouts list
+    List<String> layouts = [];
+    if (configMap['layouts'] != null) {
+      final layoutsValue = configMap['layouts'];
+      if (layoutsValue is List) {
+        layouts = layoutsValue.map((e) => e.toString()).toList();
+      } else if (layoutsValue is String) {
+        layouts = [layoutsValue];
+      }
+    }
+
+    return RssConfig(
+      enabled: configMap['enabled'] == true,
+      title: configMap['title']?.toString(),
+      description: configMap['description']?.toString(),
+      fileName: configMap['file_name']?.toString() ?? 'feed.xml',
+      layouts: layouts,
+      itemLimit: configMap['item_limit'] is int
+          ? configMap['item_limit'] as int
+          : (int.tryParse(configMap['item_limit']?.toString() ?? '') ?? null),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'enabled': enabled,
+      'title': title,
+      'description': description,
+      'file_name': fileName,
+      'layouts': layouts,
+      'item_limit': itemLimit,
+    };
+  }
+}
+
 /// Configuration for AT Protocol comment system
 class AtProtoConfig {
   final bool enabled;
@@ -47,6 +105,7 @@ class ConfigModel {
   final String? baseUrl;
   final ImageOptimizationConfig imageOptimization;
   final bool fallbackMetaTags; // If true, use first paragraph/image for meta tags when not specified
+  final RssConfig rss; // RSS feed configuration
   final AtProtoConfig atProto; // AT Protocol comment system configuration
 
   ConfigModel({
@@ -56,8 +115,10 @@ class ConfigModel {
     this.baseUrl,
     ImageOptimizationConfig? imageOptimization,
     this.fallbackMetaTags = false,
+    RssConfig? rss,
     AtProtoConfig? atProto,
   }) : imageOptimization = imageOptimization ?? ImageOptimizationConfig(),
+       rss = rss ?? RssConfig(),
        atProto = atProto ?? AtProtoConfig();
 
   factory ConfigModel.parse(File configFile) {
@@ -120,6 +181,15 @@ class ConfigModel {
       }
     }
 
+    // Parse RSS config
+    RssConfig? rssConfig;
+    if (cfg.containsKey("rss")) {
+      final rssMap = cfg["rss"];
+      if (rssMap is YamlMap) {
+        rssConfig = RssConfig.parse(_yamlMapToMap(rssMap));
+      }
+    }
+
     return ConfigModel(
         title: cfg["title"]?.toString(), // Safe access
         metadata: metadata, // Store as Map initially
@@ -127,6 +197,7 @@ class ConfigModel {
         baseUrl: cfg["baseUrl"]?.toString(),
         imageOptimization: imageOptConfig,
         fallbackMetaTags: fallbackMetaTags,
+        rss: rssConfig,
         atProto: atProtoConfig,
         );
   }
@@ -155,6 +226,7 @@ class ConfigModel {
       // CHANGE: Pass metadata directly as a Map
       'metadata': metadata,
       'baseUrl': baseUrl,
+      'rss': rss.toMap(),
       'at_proto': atProto.toMap(),
     };
   }

@@ -10,6 +10,10 @@
 
     <link rel="stylesheet" href="/assets/style.css">
 
+    {% if site.rss.enabled %}
+    <link rel="alternate" type="application/rss+xml" title="{{ site.rss.title | default: site.title | default: 'RSS Feed' }}" href="/{{ site.rss.file_name | default: 'feed.xml' }}">
+    {% endif %}
+
     {% if site.at_proto.enabled %}
     <link rel="stylesheet" href="/assets/css/at_comments.css">
     {% endif %}
