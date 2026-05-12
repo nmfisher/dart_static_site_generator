@@ -96,7 +96,7 @@ When `webp.enabled` is `true`, PNG and JPEG images are automatically converted t
 
 ## Bluesky Comment System
 
-Blog Builder supports an optional Bluesky-based comment system that uses the AT Protocol. This provides a zero-maintenance, decentralized commenting solution where each blog post becomes a Bluesky thread.
+Blog Builder supports an optional Bluesky-based comment system that uses the AT Protocol. Each blog post gets a corresponding Bluesky "anchor post", and blog comments appear as replies to that post.
 
 ### Configuration
 
@@ -105,28 +105,44 @@ Add the following to your `config.yaml`:
 ```yaml
 at_proto:
   enabled: true
-  service_identifier: "your-bot.bsky.social"  # Your Bluesky handle
+  service_identifier: "your-bot.bsky.social"  # Bluesky handle used to create anchor posts
   app_view_url: "https://public.api.bsky.app" # Optional, defaults to public API
-  turnstile_site_key: "your-turnstile-key"    # Optional, for Cloudflare Turnstile captcha
+  turnstile_site_key: "your-turnstile-key"    # Cloudflare Turnstile site key for comment captcha
 ```
 
 ### How It Works
 
-1. **Build-time**: When you build your site, Blog Builder creates a Bluesky post for each new blog post and stores the AT URI in the frontmatter.
-2. **Runtime**: Comments are loaded client-side from Bluesky's public API.
-3. **Interaction**: Users reply via deep links to the Bluesky app.
+1. **Build-time**: For published posts missing an `at_uri`, Blog Builder creates a Bluesky anchor post and writes the AT URI back into the frontmatter.
+2. **Runtime**: The comments widget loads the reply thread from Bluesky's public API.
+3. **Comment posting**: Handled server-side (e.g. via a Cloudflare Pages Function) which authenticates to Bluesky and creates reply records.
+
+### Environment Variables
+
+Anchor post creation requires these environment variables at build time:
+
+- `BSKY_PASSWORD` — App-specific password for the account specified in `service_identifier`
+- `BSKY_IDENTIFIER` — Optional, overrides `service_identifier` from config
 
 ### Frontmatter
 
-After a post is announced to Bluesky, the `bluesky_uri` is automatically added to your post's frontmatter:
+The `at_uri` field is added automatically to your post's frontmatter after the anchor post is created. You can also set it manually — for example, if you already have a Bluesky post you want to use:
 
 ```yaml
 ---
 title: My Blog Post
 date: 2024-01-15
-bluesky_uri: at://did:plc:xxx/app.bsky.feed.post/xxx
+layout: post
+published: true
+at_uri: at://did:plc:xxx/app.bsky.feed.post/xxx
 ---
 ```
+
+**Important:** The `at_uri` must be in AT Protocol URI format (`at://did:plc:.../app.bsky.feed.post/...`), not a Bluesky web URL. To convert a Bluesky URL like `https://bsky.app/profile/handle.bsky.social/post/abc123` to an `at_uri`:
+
+1. Resolve the handle to a DID: `curl -s "https://bsky.social/xrpc/com.atproto.identity.resolveHandle?handle=handle.bsky.social"`
+2. Assemble the URI: `at://did:plc:XXXXX/app.bsky.feed.post/abc123`
+
+**Note:** Do not include `at_uri:` with an empty value in frontmatter. An empty `at_uri:` will be treated as present-but-empty and the announcer will skip the post silently. Either omit the field entirely or provide a valid value.
 
 ### Template Integration
 
