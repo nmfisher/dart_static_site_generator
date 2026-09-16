@@ -764,6 +764,10 @@ class StaticSiteBuilder {
   }) async {
     await for (final entity
         in source.list(recursive: false, followLinks: false)) {
+      // Skip macOS AppleDouble metadata files (e.g. ._image.png on ExFAT volumes)
+      if (pathlib.basename(entity.path).startsWith('._')) {
+        continue;
+      }
       final newPath =
           pathlib.join(destination.path, pathlib.basename(entity.path));
       if (entity is File) {
