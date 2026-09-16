@@ -8,18 +8,23 @@
             <h1>{{ page.title | default: "Post Title Missing" }}</h1>
             {% if page.date %}
                 <p class="post-meta">
-                    <time datetime="{{ page.date }}">
-                        {{ page.date | date: "%B %d, %Y" }}
+                    <time datetime="{{ page.formatted_date }}">
+                        {{ page.long_date }}
                     </time>
                 </p>
             {% endif %}
         </header>
 
+        {{ page.toc }}
         <div class="post-content">
-            {{{ content | default: "<p>Error: No content found for this page.</p>" }}}
+            {{ content }}
         </div>
 
     </article>
 
-    {% render '_includes/comments.liquid' %}
+    <nav class="post-navigation" aria-label="Post navigation">
+    {% if page.previous %}<a rel="prev" href="{{ page.previous.route | relative_url }}">← {{ page.previous.title | escape }}</a>{% endif %}
+    {% if page.next %}<a rel="next" href="{{ page.next.route | relative_url }}">{{ page.next.title | escape }} →</a>{% endif %}
+    </nav>
+    {% render '_includes/comments.liquid', site: site, page: page %}
 {% endblock %}

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:intl/intl.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
@@ -18,7 +19,11 @@ class PageModel {
   final bool draft;
   final bool isIndex; // Is this an auto-generated index page?
   final String? atUri; // AT Protocol URI for comment thread
+  final Map<String, dynamic> extras; // Arbitrary frontmatter fields
   String? renderedContent;
+  String tableOfContents = '';
+  List<Map<String, dynamic>> headings = [];
+  bool get generated => source.startsWith('generated:');
 
   PageModel(
       {required this.title,
@@ -32,7 +37,8 @@ class PageModel {
       this.templateId,
       this.date,
       this.isIndex = false,
-      this.atUri}) {
+      this.atUri,
+      this.extras = const {}}) {
     if (route.isEmpty && !isIndex) {
       throw ArgumentError.value(
           route, 'route', "Route cannot be empty (source $source)");
@@ -42,18 +48,22 @@ class PageModel {
     }
   }
 
-  factory PageModel.from(File file, Directory baseDir, {bool useFallbackMetaTags = false}) {
+  factory PageModel.from(File file, Directory baseDir,
+      {bool useFallbackMetaTags = false}) {
     final filePath = file.path;
     final content = file.readAsStringSync();
-    final parts = content.split('---');
+    final frontmatter = RegExp(
+            r'^---[ \t]*\r?\n([\s\S]*?)^---[ \t]*(?:\r?\n|$)',
+            multiLine: true)
+        .firstMatch(content);
 
-    if (parts.length < 3 || !content.startsWith('---')) {
+    if (frontmatter == null || frontmatter.start != 0) {
       throw FormatException(
           "Invalid frontmatter format in $filePath. Expected '---' delimiters.");
     }
 
-    final frontmatterContent = parts[1];
-    final markdownContent = parts.skip(2).join('---').trim();
+    final frontmatterContent = frontmatter.group(1)!;
+    final markdownContent = content.substring(frontmatter.end).trim();
 
     dynamic doc;
     try {
@@ -73,12 +83,20 @@ class PageModel {
         doc["title"]?.toString() ?? p.basenameWithoutExtension(filePath);
 
     DateTime? date;
+    if (doc['published'] != null && doc['published'] is! bool)
+      throw FormatException('published must be a boolean in $filePath');
+    for (final field in ['tags', 'categories']) {
+      if (doc[field] != null &&
+          doc[field] is! String &&
+          doc[field] is! YamlList)
+        throw FormatException('$field must be a string or list in $filePath');
+    }
     if (doc["date"] != null) {
       try {
         date = DateTime.parse(doc["date"].toString());
       } catch (err) {
-        print(
-            "Warning: Could not parse date '${doc["date"]}' in $filePath (expected ISO 8601 format): $err");
+        throw FormatException(
+            "Invalid date '${doc['date']}' in $filePath; use ISO 8601.");
       }
     }
 
@@ -109,16 +127,19 @@ class PageModel {
     // Apply fallback meta tags if enabled and not already specified
     if (useFallbackMetaTags) {
       // Use first paragraph for description if not specified
-      if (!metadata.containsKey("og:description") || metadata["og:description"]!.isEmpty) {
+      if (!metadata.containsKey("og:description") ||
+          metadata["og:description"]!.isEmpty) {
         final firstPara = _extractFirstParagraph(markdownContent);
         if (firstPara != null) {
           metadata["og:description"] = firstPara;
         }
       }
 
-      if (!metadata.containsKey("twitter:description") || metadata["twitter:description"]!.isEmpty) {
+      if (!metadata.containsKey("twitter:description") ||
+          metadata["twitter:description"]!.isEmpty) {
         // Use og:description if set, otherwise extract first paragraph
-        if (metadata.containsKey("og:description") && metadata["og:description"]!.isNotEmpty) {
+        if (metadata.containsKey("og:description") &&
+            metadata["og:description"]!.isNotEmpty) {
           metadata["twitter:description"] = metadata["og:description"]!;
         } else {
           final firstPara = _extractFirstParagraph(markdownContent);
@@ -177,6 +198,39 @@ class PageModel {
 
     final atUri = doc["at_uri"]?.toString();
 
+    // Capture arbitrary frontmatter fields not handled above
+    final knownKeys = {
+      'layout',
+      'template',
+      'title',
+      'date',
+      'meta',
+      'url',
+      'route',
+      'published',
+      'at_uri'
+    };
+    final extras = <String, dynamic>{};
+    for (final key in doc.keys) {
+      if (!knownKeys.contains(key.toString())) {
+        final value = doc[key];
+        if (value is YamlList) {
+          extras[key.toString()] = value.toList().map((e) {
+            if (e is YamlMap) {
+              return Map<String, dynamic>.from(
+                  e.map((k, v) => MapEntry(k.toString(), v)));
+            }
+            return e.toString();
+          }).toList();
+        } else if (value is YamlMap) {
+          extras[key.toString()] = Map<String, dynamic>.from(
+              value.map((k, v) => MapEntry(k.toString(), v)));
+        } else {
+          extras[key.toString()] = value;
+        }
+      }
+    }
+
     return PageModel(
         rawMarkdown: markdownContent,
         source: filePath,
@@ -188,7 +242,10 @@ class PageModel {
         blurb: blurb,
         metadata: metadata,
         draft: doc["published"] != true,
-        atUri: atUri);
+        isIndex: route == '/' ||
+            p.basenameWithoutExtension(filePath).toLowerCase() == 'index',
+        atUri: atUri,
+        extras: extras);
   }
 
   factory PageModel.index(
@@ -234,8 +291,7 @@ class PageModel {
     metadata.putIfAbsent("og:description", () => "Index of $title");
 
     return PageIndexPageModel(
-        rawMarkdown:
-            "",
+        rawMarkdown: "",
         source: directory.path,
         title: title,
         route: fullpath,
@@ -261,25 +317,36 @@ class PageModel {
       templateId: data['templateId'],
       isIndex: data['isIndex'] ?? false,
       atUri: data['atUri'],
+      extras: Map<String, dynamic>.from(data['extras'] ?? {}),
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = {
       'layoutId': layoutId,
       'templateId': templateId,
       'title': title,
       'route': route,
       'metadata': metadata,
       'date': date,
+      'formatted_date':
+          date == null ? null : DateFormat('yyyy-MM-dd', 'en_US').format(date!),
+      'long_date': date == null
+          ? null
+          : DateFormat('MMMM dd, yyyy', 'en_US').format(date!),
       'blurb': blurb,
       'source': source,
       'draft': draft,
       'isIndex': isIndex,
       'raw_markdown': rawMarkdown,
       'rendered_content': renderedContent,
+      'toc': tableOfContents,
+      'headings': headings,
       'at_uri': atUri,
     };
+    // Merge arbitrary frontmatter so templates can access e.g. {{ page.sku }}
+    map.addAll(extras);
+    return map;
   }
 
   /// Create a copy of this PageModel with specified fields replaced
@@ -297,6 +364,7 @@ class PageModel {
     bool? isIndex,
     String? atUri,
     String? renderedContent,
+    Map<String, dynamic>? extras,
   }) {
     return PageModel(
       layoutId: layoutId ?? this.layoutId,
@@ -311,6 +379,7 @@ class PageModel {
       draft: draft ?? this.draft,
       isIndex: isIndex ?? this.isIndex,
       atUri: atUri ?? this.atUri,
+      extras: extras ?? this.extras,
     )..renderedContent = renderedContent ?? this.renderedContent;
   }
 
@@ -326,7 +395,8 @@ class PageModel {
         inlineSyntaxes: [md.InlineHtmlSyntax()]);
 
     // Strip HTML tags and clean up whitespace
-    final plainText = html.replaceAll(RegExp(r'<[^>]*>'), ' ')
+    final plainText = html
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
@@ -360,7 +430,8 @@ class PageModel {
     }
 
     // Match HTML img tags: <img src="url" ... >
-    final htmlImageRegex = RegExp("<img[^>]+src=[\"']([^\"']+)[\"']", caseSensitive: false);
+    final htmlImageRegex =
+        RegExp("<img[^>]+src=[\"']([^\"']+)[\"']", caseSensitive: false);
     final htmlMatch = htmlImageRegex.firstMatch(markdownContent);
     if (htmlMatch != null) {
       return htmlMatch.group(1)?.trim();
@@ -386,23 +457,27 @@ class PageIndexPageModel extends PageModel {
       super.draft = false,
       super.isIndex = true,
       super.date,
-      super.atUri});
+      super.atUri,
+      super.extras});
 
   @override
   Map<String, dynamic> toMap() {
     final map = super.toMap();
     final sortedChildren = List<PageModel>.from(children)
       ..sort((a, b) {
+        final ap = int.tryParse('${a.extras['priority']}');
+        final bp = int.tryParse('${b.extras['priority']}');
+        final priority = (ap ?? 2147483647).compareTo(bp ?? 2147483647);
+        if (priority != 0) return priority;
         if (a.date == null && b.date == null) return 0;
         if (a.date == null) return 1;
         if (b.date == null) return -1;
         return b.date!.compareTo(a.date!);
       });
-    map['children'] =
-        sortedChildren.where((c) => !c.draft).map((c) => c.toMap()).toList();
+    map['children'] = sortedChildren.map((c) => c.toMap()).toList();
     return map;
   }
-  
+
   factory PageIndexPageModel.fromMap(Map<String, dynamic> data) {
     final List<PageModel> children = [];
     if (data['children'] is List) {
@@ -410,7 +485,7 @@ class PageIndexPageModel extends PageModel {
         // If it's ALREADY a PageModel, add it directly.
         if (childData is PageModel) {
           children.add(childData);
-        // If it's a map, construct a new PageModel from it.
+          // If it's a map, construct a new PageModel from it.
         } else if (childData is Map<String, dynamic>) {
           children.add(PageModel.fromMap(childData));
         }

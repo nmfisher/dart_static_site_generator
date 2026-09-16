@@ -9,6 +9,6 @@ This is a test post to verify that fallback meta tags work correctly. When fallb
 
 This is the second paragraph which should not be used.
 
-![Test Image](/assets/test-image.jpg)
+![Test Image](/assets/logo.png)
 
 Here's some more content after the image.

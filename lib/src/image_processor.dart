@@ -220,7 +220,8 @@ class ImageProcessor {
   }
 
   /// Process a single image file
-  Future<ImageProcessResult> processImage(File inputFile, File outputFile) async {
+  Future<ImageProcessResult> processImage(
+      File inputFile, File outputFile) async {
     final inputPath = inputFile.path;
     final outputPath = outputFile.path;
 
@@ -274,13 +275,28 @@ class ImageProcessor {
   }
 
   /// Process a single image file with optional WebP conversion
-  Future<List<ImageProcessResult>> processImageWithWebP(File inputFile, File outputFile, {required FileSystem fileSystem, String? assetsBasePath}) async {
+  Future<List<ImageProcessResult>> processImageWithWebP(
+      File inputFile, File outputFile,
+      {required FileSystem fileSystem, String? assetsBasePath}) async {
     final inputPath = inputFile.path;
     final outputPath = outputFile.path;
     final results = <ImageProcessResult>[];
 
     final originalBytes = await inputFile.readAsBytes();
     final originalSize = originalBytes.length;
+
+    // Existing WebP files are assets too; preserve them without decoding.
+    if (isWebp(inputPath)) {
+      await inputFile.copy(outputPath);
+      final result = ImageProcessResult(
+          inputPath: inputPath,
+          outputPath: outputPath,
+          originalSize: originalSize,
+          compressedSize: originalSize,
+          success: true);
+      stats.addResult(result);
+      return [result];
+    }
 
     // Process the original format first
     Uint8List compressedBytes;
@@ -297,7 +313,9 @@ class ImageProcessor {
     }
 
     // Save original/compressed format if needed
-    if (config.webp.enabled && config.webp.createFallbacks && (isPng(inputPath) || isJpeg(inputPath))) {
+    if (config.webp.enabled &&
+        config.webp.createFallbacks &&
+        (isPng(inputPath) || isJpeg(inputPath))) {
       // Save the original/compressed version
       if (shouldCompressOriginal && compressedBytes.length < originalSize) {
         await outputFile.writeAsBytes(compressedBytes);
@@ -318,7 +336,8 @@ class ImageProcessor {
           success: true,
         ));
       }
-    } else if (shouldCompressOriginal && compressedBytes.length < originalSize) {
+    } else if (shouldCompressOriginal &&
+        compressedBytes.length < originalSize) {
       // Only WebP conversion, no fallback needed
       await outputFile.writeAsBytes(compressedBytes);
       results.add(ImageProcessResult(
@@ -343,17 +362,20 @@ class ImageProcessor {
     // Convert to WebP if enabled and input is PNG/JPEG
     if (config.webp.enabled && (isPng(inputPath) || isJpeg(inputPath))) {
       try {
-        final webpBytes = await _convertToWebp(originalBytes, inputFile, fileSystem: fileSystem);
+        final webpBytes = await _convertToWebp(originalBytes, inputFile,
+            fileSystem: fileSystem);
         final webpOutputPath = '${path.withoutExtension(outputPath)}.webp';
         await fileSystem.file(webpOutputPath).writeAsBytes(webpBytes);
 
         // Track the WebP conversion for HTML processing
         if (assetsBasePath != null) {
-          final relativeOriginal = path.relative(inputPath, from: assetsBasePath);
-          final relativeWebP = path.relative(webpOutputPath, from: assetsBasePath);
+          final relativeOriginal =
+              path.relative(inputPath, from: assetsBasePath);
+          final relativeWebP =
+              '${path.withoutExtension(relativeOriginal)}.webp';
           // Store paths relative to the base path (usually the build directory)
-          webpMappings[path.join('assets', path.basename(relativeOriginal))] =
-              path.join('assets', path.basename(relativeWebP));
+          webpMappings[path.join('assets', relativeOriginal)] =
+              path.join('assets', relativeWebP);
         }
 
         final webpResult = ImageProcessResult(
@@ -413,7 +435,8 @@ class ImageProcessor {
   }
 
   /// Convert image to WebP format using cwebp tool
-  Future<Uint8List> _convertToWebp(Uint8List bytes, File inputFile, {required FileSystem fileSystem}) async {
+  Future<Uint8List> _convertToWebp(Uint8List bytes, File inputFile,
+      {required FileSystem fileSystem}) async {
     // Create temporary files for conversion
     final tempInput = fileSystem.file('${inputFile.path}.tmp');
     final tempOutput = fileSystem.file('${inputFile.path}.webp.tmp');
@@ -424,10 +447,13 @@ class ImageProcessor {
 
       // Run cwebp command
       final result = await Process.run('cwebp', [
-        '-q', config.webp.quality.toString(),
-        '-m', config.webp.method.toString(),
+        '-q',
+        config.webp.quality.toString(),
+        '-m',
+        config.webp.method.toString(),
         tempInput.path,
-        '-o', tempOutput.path,
+        '-o',
+        tempOutput.path,
       ]);
 
       if (result.exitCode != 0) {

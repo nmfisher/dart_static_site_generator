@@ -1,0 +1,10 @@
+<meta name="description" content="{{ page.seo.description | escape }}">
+<link rel="canonical" href="{{ page.canonical_url | escape }}">
+<meta property="og:title" content="{{ page.seo.title | escape }}">
+<meta property="og:description" content="{{ page.seo.description | escape }}">
+<meta property="og:url" content="{{ page.canonical_url | escape }}">
+<meta property="og:type" content="{{ page.seo.type }}">
+<meta name="twitter:card" content="{% if page.seo.image %}summary_large_image{% else %}summary{% endif %}">
+<meta name="twitter:title" content="{{ page.seo.title | escape }}">
+<meta name="twitter:description" content="{{ page.seo.description | escape }}">
+{% if page.seo.image %}<meta property="og:image" content="{{ page.seo.image | escape }}"><meta name="twitter:image" content="{{ page.seo.image | escape }}">{% endif %}

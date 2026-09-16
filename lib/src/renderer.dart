@@ -1,125 +1,176 @@
 import 'dart:async';
 import 'package:liquify/liquify.dart';
-import 'package:intl/intl.dart'; // Import for date formatting
-import 'dart:math'; // New import for min function
-import 'package:markdown/markdown.dart' as md; // New import for markdownToHtml
-import 'package:blog_builder/blog_builder.dart';
-import 'package:blog_builder/src/site_data_model.dart'; // New import
+import 'package:markdown/markdown.dart' as md;
+import 'package:html/parser.dart' as html;
+import 'config_models.dart';
+import 'page_models.dart';
+import 'site_data_model.dart';
+import 'site_urls.dart';
+import 'markdown_features.dart';
+import 'build_cache.dart';
+
+const _urlsZone = #blogBuilderUrls;
+bool _filtersRegistered = false;
 
 class TemplateRenderer {
   final Root templateRoot;
-
-  TemplateRenderer(this.templateRoot);
+  final BuildCache? cache;
+  TemplateRenderer(this.templateRoot, {this.cache}) {
+    if (!_filtersRegistered) {
+      FilterRegistry.register(
+          'relative_url',
+          (value, args, named) =>
+              (Zone.current[_urlsZone] as SiteUrls).relative(value));
+      FilterRegistry.register(
+          'absolute_url',
+          (value, args, named) =>
+              (Zone.current[_urlsZone] as SiteUrls).absolute(value));
+      _filtersRegistered = true;
+    }
+  }
 
   String resolveLayoutPath(String? layoutId, bool isIndex) {
-    final layoutName = layoutId ?? (isIndex ? 'list' : 'default');
-    return '_layouts/$layoutName.liquid'.replaceAll(r'\', '/');
+    final name = layoutId ?? (isIndex ? 'list' : 'default');
+    if (name.startsWith('/') ||
+        name.contains('\\') ||
+        name.split('/').contains('..'))
+      throw FormatException('Invalid layout name: $name');
+    return '_layouts/$name.liquid';
   }
 
-  // Prepares the data map used for rendering
-  Map<String, dynamic> _prepareRenderData(PageModel page, ConfigModel siteConfig, SiteData siteData) {
-    final Map<String, dynamic> renderData = {
-      'site': siteConfig.toMap(),
-      'page': page.toMap(),
+  Map<String, dynamic> _data(
+      PageModel page, ConfigModel config, SiteData site) {
+    final urls = SiteUrls(config);
+    final description = page.metadata['description'] ??
+        page.metadata['og:description'] ??
+        page.blurb;
+    final image = page.metadata['og:image'] ?? config.metadata['og:image'];
+    return {
+      'site': {...site.toLiquidMap(), ...config.toMap()},
+      'page': {
+        ...page.toMap(),
+        'canonical_url':
+            urls.absolute(page.route == '/' ? '/' : '${page.route}/'),
+        'seo': {
+          'title': page.metadata['og:title'] ?? page.title,
+          'description': description,
+          'image': image == null ? null : urls.absolute(image),
+          'type': page.date == null ? 'website' : 'article'
+        }
+      },
+      'content': page.renderedContent ?? '',
     };
-    (renderData['site'] as Map<String, dynamic>).addAll(siteData.toLiquidMap());
-
-    if (page.date != null) {
-      (renderData['page'] as Map<String, dynamic>)['formatted_date'] =
-          _formatDate(page.date!, "%Y-%m-%d");
-    }
-    return renderData;
   }
 
-  /// Pass 1: Renders the page's markdown content to HTML.
-  Future<String> renderContent(PageModel page, ConfigModel siteConfig, SiteData siteData) async {
-    final renderData = _prepareRenderData(page, siteConfig, siteData);
-    String processedMarkdown = page.rawMarkdown;
-    
-    if (page.rawMarkdown.isNotEmpty) {
-      try {
-        final markdownTemplate = Template.parse(
-          processedMarkdown,
-          data: renderData,
-          root: templateRoot,
-        );
-        processedMarkdown = await markdownTemplate.render();
-      } catch (e, s) {
-        print("Error processing Liquid in markdown for page ${page.route}. Exception: $e");
-        print("Stack trace:\n$s");
-        rethrow;
+  Future<String> _render(String kind, String source, PageModel page,
+      ConfigModel config, SiteData site,
+      {String? layoutPath}) async {
+    final data = _data(page, config, site);
+    final pageData = Map<String, dynamic>.from(data['page']);
+    if (kind == 'content') {
+      pageData.remove('rendered_content');
+      pageData.remove('toc');
+      pageData.remove('headings');
+    }
+    final key = fingerprint([
+      2,
+      kind,
+      source,
+      pageData,
+      config.toMap(),
+      kind == 'layout' ? data['content'] : null
+    ]);
+    final cached = cache?.read(kind, key);
+    if (cached != null &&
+        SiteReads.matches(data['site'], cached['site_reads'] as Map)) {
+      var valid = true;
+      for (final entry in (cached['templates'] as Map).entries) {
+        try {
+          if (fingerprint(templateRoot.resolve(entry.key).content) !=
+              entry.value) valid = false;
+        } catch (_) {
+          valid = false;
+        }
+      }
+      if (valid) {
+        if (kind == 'content') {
+          cache!.contentHits++;
+          page.tableOfContents = cached['toc'] ?? '';
+          page.headings = (cached['headings'] as List? ?? [])
+              .map((v) => Map<String, dynamic>.from(v))
+              .toList();
+        } else {
+          cache!.layoutHits++;
+        }
+        return cached['html'] as String;
       }
     }
-    
-    return md.markdownToHtml(
-      processedMarkdown,
-      extensionSet: md.ExtensionSet.gitHubFlavored,
-    );
+    final root = TrackingRoot(templateRoot);
+    final reads = SiteReads(data['site']);
+    data['site'] = reads.tracked;
+    if (layoutPath != null &&
+        (await root.resolveAsync(layoutPath)).content.trim().isEmpty)
+      throw Exception('Layout template is empty: $layoutPath');
+    final rendered = await runZoned(
+        () => Template.parse(source, data: data, root: root).renderAsync(),
+        zoneValues: {_urlsZone: SiteUrls(config)});
+    final result = kind == 'content'
+        ? enhanceMarkdown(
+            md.markdownToHtml(rendered,
+                extensionSet: md.ExtensionSet.gitHubFlavored,
+                inlineSyntaxes: [md.InlineHtmlSyntax()]),
+            page,
+            config)
+        : mountHtml(rendered, SiteUrls(config));
+    if (kind == 'layout' && result.trim().isEmpty)
+      throw Exception('Rendered content is empty');
+    if (!root.volatile &&
+        !RegExp(r'''['"](?:now|today)['"]''').hasMatch(source)) {
+      cache?.write(kind, key, {
+        'html': result,
+        'templates': root.dependencies,
+        'site_reads': reads.reads,
+        'toc': page.tableOfContents,
+        'headings': page.headings
+      });
+    }
+    return result;
   }
 
-  /// Pass 2: Renders the final page with its layout.
+  Future<String> renderContent(
+          PageModel page, ConfigModel config, SiteData site) =>
+      _render('content', page.rawMarkdown, page, config, site);
+
   Future<String> renderPageWithLayout(
-      PageModel page, ConfigModel siteConfig, SiteData siteData,
-      {String? layoutName}) async {
-    final layoutPath =
-        resolveLayoutPath(layoutName ?? page.layoutId, page.isIndex);
-    print("Resolved layoutPath : $layoutPath");
-
-    final renderData = _prepareRenderData(page, siteConfig, siteData);
-    
-    // Use the pre-rendered content from pass 1
-    renderData['content'] = page.renderedContent ?? '';
-
-    final layoutSource = await templateRoot.resolveAsync(layoutPath);
-
-    if (layoutSource.content.trim().isEmpty) {
-      throw Exception("Layout template is empty: $layoutPath");
-    }
-
-    final template = Template.parse(
-      layoutSource.content,
-      data: renderData,
-      root: templateRoot,
-    );
-
-    final renderedContent = await template.render();
-
-    if (renderedContent.trim().isEmpty) {
-      throw Exception("Rendered content is empty");
-    }
-
-    return renderedContent;
+      PageModel page, ConfigModel config, SiteData site,
+      {String? layoutName}) {
+    final path = resolveLayoutPath(layoutName ?? page.layoutId, page.isIndex);
+    return _render('layout', "{% layout '${path.replaceAll("'", "\\'")}' %}",
+        page, config, site,
+        layoutPath: path);
   }
+}
 
-  String _formatDate(DateTime date, String formatString) {
-    String dartFormat = formatString
-        .replaceAll('%Y', 'yyyy')
-        .replaceAll('%y', 'yy')
-        .replaceAll('%m', 'MM')
-        .replaceAll('%d', 'dd')
-        .replaceAll('%H', 'HH')
-        .replaceAll('%I', 'hh')
-        .replaceAll('%M', 'mm')
-        .replaceAll('%S', 'ss')
-        .replaceAll('%a', 'EEE')
-        .replaceAll('%A', 'EEEE')
-        .replaceAll('%b', 'MMM')
-        .replaceAll('%B', 'MMMM')
-        .replaceAll('%j', 'DDD') // Day of year (approximate)
-        .replaceAll('%w', 'w')   // Weekday (approximate)
-        .replaceAll('%U', 'ww')  // Week number (approximate)
-        .replaceAll('%W', 'ww')  // Week number (approximate)
-        .replaceAll('%c', 'EEE MMM dd HH:mm:ss yyyy')
-        .replaceAll('%x', 'MM/dd/yy')
-        .replaceAll('%X', 'HH:mm:ss')
-        .replaceAll('%Z', 'zzz')
-        .replaceAll('%z', 'Z')
-        .replaceAll('%%', '%');
-
-    try {
-      return DateFormat(dartFormat).format(date);
-    } catch (e) {
-      return date.toIso8601String(); // Fallback
+String mountHtml(String source, SiteUrls urls) {
+  if (urls.basePath.isEmpty) return source;
+  final isDocument =
+      RegExp(r'<!doctype|<html(?:\s|>)', caseSensitive: false).hasMatch(source);
+  final document = isDocument ? html.parse(source) : null;
+  final fragment = isDocument ? null : html.parseFragment(source);
+  final elements =
+      document?.querySelectorAll('[href],[src],[action],[poster],[srcset]') ??
+          fragment!.querySelectorAll('[href],[src],[action],[poster],[srcset]');
+  for (final element in elements) {
+    final srcset = element.attributes['srcset'];
+    if (srcset != null)
+      element.attributes['srcset'] = srcset.replaceAllMapped(
+          RegExp(r'(^|,\s*)(/[^\s,]*)(?=\s|,|$)'),
+          (match) => '${match[1]}${urls.relative(match[2])}');
+    for (final name in ['href', 'src', 'action', 'poster']) {
+      final value = element.attributes[name];
+      if (value != null && value.startsWith('/') && !value.startsWith('//'))
+        element.attributes[name] = urls.relative(value);
     }
   }
+  return document?.outerHtml ?? fragment!.outerHtml;
 }

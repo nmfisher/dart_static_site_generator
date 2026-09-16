@@ -11,14 +11,16 @@
             {% endif %}
         </header>
 
+        {{ content }}
+
         <ul class="list-items">
             {% for child_page in page.children %}
                 <li class="list-item">
                     <h2><a href="{{ child_page.route }}">{{ child_page.title }}</a></h2>
                     {% if child_page.date %}
                         <p class="item-meta">
-                            <time datetime="{{ child_page.date }}">
-                                {{ child_page.date | date: "%B %d, %Y" }} {% comment %} Example date format {% endcomment %}
+                            <time datetime="{{ child_page.formatted_date }}">
+                                {{ child_page.long_date }}
                             </time>
                         </p>
                     {% endif %}
@@ -31,5 +33,6 @@
                 <li>No items found.</li>
             {% endfor %}
         </ul>
+        {% render '_includes/pagination.liquid', page: page, site: site %}
     </article>
 {% endblock %}

@@ -1,0 +1,11 @@
+.dart_tool/
+build/
+**/.blog-cache/
+.DS_Store
+
+# Local settings and secrets
+.vscode/
+.env
+.env.*
+!.env.example
+!.env.template

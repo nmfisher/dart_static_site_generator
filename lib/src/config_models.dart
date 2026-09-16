@@ -6,11 +6,11 @@ import 'package:blog_builder/src/image_processor.dart';
 /// Configuration for RSS feed generation
 class RssConfig {
   final bool enabled;
-  final String? title;        // Override site title
-  final String? description;  // Override site description
-  final String fileName;      // Output filename (default: "feed.xml")
+  final String? title; // Override site title
+  final String? description; // Override site description
+  final String fileName; // Output filename (default: "feed.xml")
   final List<String> layouts; // Which layouts to include (empty = all)
-  final int? itemLimit;       // Max items in feed (null = unlimited)
+  final int? itemLimit; // Max items in feed (null = unlimited)
 
   RssConfig({
     this.enabled = false,
@@ -64,9 +64,10 @@ class RssConfig {
 /// Configuration for AT Protocol comment system
 class AtProtoConfig {
   final bool enabled;
-  final String? serviceIdentifier;  // The bot account handle (for server-side posting)
-  final String appViewUrl;          // AppView endpoint (read)
-  final String? turnstileSiteKey;   // Cloudflare Turnstile site key for captcha
+  final String?
+      serviceIdentifier; // The bot account handle (for server-side posting)
+  final String appViewUrl; // AppView endpoint (read)
+  final String? turnstileSiteKey; // Cloudflare Turnstile site key for captcha
 
   AtProtoConfig({
     this.enabled = false,
@@ -83,7 +84,8 @@ class AtProtoConfig {
     return AtProtoConfig(
       enabled: configMap['enabled'] == true,
       serviceIdentifier: configMap['service_identifier']?.toString(),
-      appViewUrl: configMap['app_view_url']?.toString() ?? 'https://public.api.bsky.app',
+      appViewUrl: configMap['app_view_url']?.toString() ??
+          'https://public.api.bsky.app',
       turnstileSiteKey: configMap['turnstile_site_key']?.toString(),
     );
   }
@@ -98,13 +100,35 @@ class AtProtoConfig {
   }
 }
 
+class CollectionConfig {
+  final String name, path, title;
+  final String? layout;
+  final int pageSize;
+  CollectionConfig(this.name,
+      {String? path, String? title, this.layout, this.pageSize = 10})
+      : path = path ?? name,
+        title = title ?? name;
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'path': path,
+        'title': title,
+        'layout': layout,
+        'page_size': pageSize
+      };
+}
+
 class ConfigModel {
   final String? title;
+  final String basePath;
+  final Map<String, CollectionConfig> collections;
+  final int pageSize;
+  final bool searchEnabled, highlighting, headingAnchors, tableOfContents;
   final String? owner;
   final Map<String, String> metadata; // Keep original type here
   final String? baseUrl;
   final ImageOptimizationConfig imageOptimization;
-  final bool fallbackMetaTags; // If true, use first paragraph/image for meta tags when not specified
+  final bool
+      fallbackMetaTags; // If true, use first paragraph/image for meta tags when not specified
   final RssConfig rss; // RSS feed configuration
   final AtProtoConfig atProto; // AT Protocol comment system configuration
 
@@ -113,13 +137,22 @@ class ConfigModel {
     required this.metadata,
     this.owner,
     this.baseUrl,
+    String? basePath,
+    this.collections = const {},
+    this.pageSize = 10,
+    this.searchEnabled = true,
+    this.highlighting = true,
+    this.headingAnchors = true,
+    this.tableOfContents = true,
     ImageOptimizationConfig? imageOptimization,
     this.fallbackMetaTags = false,
     RssConfig? rss,
     AtProtoConfig? atProto,
-  }) : imageOptimization = imageOptimization ?? ImageOptimizationConfig(),
-       rss = rss ?? RssConfig(),
-       atProto = atProto ?? AtProtoConfig();
+  })  : basePath = normalizeBasePath(
+            basePath ?? (baseUrl == null ? '' : Uri.parse(baseUrl).path)),
+        imageOptimization = imageOptimization ?? ImageOptimizationConfig(),
+        rss = rss ?? RssConfig(),
+        atProto = atProto ?? AtProtoConfig();
 
   factory ConfigModel.parse(File configFile) {
     final content = configFile.readAsStringSync();
@@ -138,7 +171,7 @@ class ConfigModel {
       throw Exception(
           "Invalid config file format. Expected a YAML map. File: ${configFile.path}");
     }
-    final cfg = cfgYaml as YamlMap;
+    final cfg = cfgYaml;
 
     var metadata = <String, String>{};
     try {
@@ -161,8 +194,8 @@ class ConfigModel {
     if (cfg.containsKey("image_optimization")) {
       final imageOptMap = cfg["image_optimization"];
       if (imageOptMap is YamlMap) {
-        imageOptConfig = ImageOptimizationConfig.fromMap(
-            _yamlMapToMap(imageOptMap));
+        imageOptConfig =
+            ImageOptimizationConfig.fromMap(_yamlMapToMap(imageOptMap));
       }
     }
 
@@ -190,16 +223,70 @@ class ConfigModel {
       }
     }
 
+    final pageSize = _positiveInt(
+        cfg['pagination']?['page_size'], 10, 'pagination.page_size');
+    final collections = <String, CollectionConfig>{};
+    if (cfg['collections'] != null && cfg['collections'] is! YamlMap) {
+      throw FormatException('collections must be a map');
+    }
+    for (final entry in (cfg['collections'] as Map? ?? {}).entries) {
+      final name = entry.key.toString();
+      if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(name))
+        throw FormatException('Invalid collection name: $name');
+      final value = entry.value ?? {};
+      if (value is! Map)
+        throw FormatException('Collection $name must be a map');
+      final contentPath = value['path']?.toString() ?? name;
+      if (contentPath.isEmpty ||
+          contentPath.split('/').any((s) => s.isEmpty) ||
+          contentPath.startsWith('/') ||
+          contentPath.contains('\\') ||
+          contentPath.split('/').any((s) => s == '..' || s == '.')) {
+        throw FormatException('Invalid collection path: $contentPath');
+      }
+      collections[name] = CollectionConfig(name,
+          path: contentPath,
+          title: value['title']?.toString(),
+          layout: value['layout']?.toString(),
+          pageSize:
+              _positiveInt(value['page_size'], pageSize, '$name.page_size'));
+    }
     return ConfigModel(
-        title: cfg["title"]?.toString(), // Safe access
-        metadata: metadata, // Store as Map initially
-        owner: cfg["owner"]?.toString(),
-        baseUrl: cfg["baseUrl"]?.toString(),
-        imageOptimization: imageOptConfig,
-        fallbackMetaTags: fallbackMetaTags,
-        rss: rssConfig,
-        atProto: atProtoConfig,
-        );
+      basePath: cfg['base_path']?.toString(),
+      collections: collections,
+      pageSize: pageSize,
+      searchEnabled: cfg['search']?['enabled'] != false,
+      highlighting: cfg['markdown']?['highlight'] != false,
+      headingAnchors: cfg['markdown']?['heading_anchors'] != false,
+      tableOfContents: cfg['markdown']?['toc'] != false,
+      title: cfg["title"]?.toString(), // Safe access
+      metadata: metadata, // Store as Map initially
+      owner: cfg["owner"]?.toString(),
+      baseUrl: cfg["baseUrl"]?.toString(),
+      imageOptimization: imageOptConfig,
+      fallbackMetaTags: fallbackMetaTags,
+      rss: rssConfig,
+      atProto: atProtoConfig,
+    );
+  }
+
+  static int _positiveInt(dynamic value, int fallback, String name) {
+    if (value == null) return fallback;
+    if (value is! int || value <= 0)
+      throw FormatException('$name must be a positive integer');
+    return value;
+  }
+
+  static String normalizeBasePath(String value) {
+    final path = value.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+    if (path.isEmpty) return '';
+    if (path.contains('\\') ||
+        path.contains('?') ||
+        path.contains('#') ||
+        path.split('/').any((p) => p == '.' || p == '..')) {
+      throw FormatException('Invalid base_path: $value');
+    }
+    return '/$path';
   }
 
   /// Helper to convert YamlMap to Map<String, dynamic>
@@ -226,6 +313,14 @@ class ConfigModel {
       // CHANGE: Pass metadata directly as a Map
       'metadata': metadata,
       'baseUrl': baseUrl,
+      'base_path': basePath,
+      'search': {'enabled': searchEnabled},
+      'current_year': DateTime.now().year,
+      'markdown': {
+        'highlight': highlighting,
+        'heading_anchors': headingAnchors,
+        'toc': tableOfContents
+      },
       'rss': rss.toMap(),
       'at_proto': atProto.toMap(),
     };

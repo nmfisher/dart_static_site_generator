@@ -6,7 +6,8 @@
         <nav class="site-nav">
             <ul>
                 <li><a href="/">Home</a></li>
-                <li><a href="/about">About</a></li>
+                {% if site.about %}<li><a href="/about">About</a></li>{% endif %}
+                {% if site.search.enabled %}<li><a href="/search">Search</a></li>{% endif %}
             </ul>
         </nav>
     </div>

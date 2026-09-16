@@ -1,6 +1,5 @@
 // test/webp_test.dart
 import 'dart:io' as io;
-import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:file/file.dart';
 import 'package:file/local.dart';
@@ -106,12 +105,15 @@ void main() {
       processor = ImageProcessor(config: config);
       final outputFile = fs.file('${tempDir.path}/output.png');
 
-      final results = await processor.processImageWithWebP(testPngFile, outputFile, fileSystem: fs);
+      final results = await processor
+          .processImageWithWebP(testPngFile, outputFile, fileSystem: fs);
 
       expect(results, hasLength(2)); // Should create both PNG fallback and WebP
 
-      final pngResult = results.firstWhere((r) => r.outputPath.endsWith('.png'));
-      final webpResult = results.firstWhere((r) => r.outputPath.endsWith('.webp'));
+      final pngResult =
+          results.firstWhere((r) => r.outputPath.endsWith('.png'));
+      final webpResult =
+          results.firstWhere((r) => r.outputPath.endsWith('.webp'));
 
       // Check PNG result
       expect(pngResult.success, isTrue);
@@ -127,10 +129,12 @@ void main() {
 
       print('Original PNG: ${originalSize} bytes');
       print('WebP: ${webpResult.compressedSize} bytes');
-      print('Compression ratio: ${((1 - webpResult.compressedSize / originalSize) * 100).toStringAsFixed(1)}%');
+      print(
+          'Compression ratio: ${((1 - webpResult.compressedSize / originalSize) * 100).toStringAsFixed(1)}%');
     });
 
-    test('ImageProcessor should handle WebP-only conversion (no fallback)', () async {
+    test('ImageProcessor should handle WebP-only conversion (no fallback)',
+        () async {
       // Skip test if cwebp is not available
       try {
         await io.Process.run('cwebp', ['-version']);
@@ -153,7 +157,8 @@ void main() {
       processor = ImageProcessor(config: config);
       final outputFile = fs.file('${tempDir.path}/output.webp');
 
-      final results = await processor.processImageWithWebP(testPngFile, outputFile, fileSystem: fs);
+      final results = await processor
+          .processImageWithWebP(testPngFile, outputFile, fileSystem: fs);
 
       expect(results, hasLength(1)); // Should only create WebP
 
@@ -173,18 +178,16 @@ void main() {
 
       // Create a WebP file
       final webpFile = fs.file('${tempDir.path}/test.webp');
-      await webpFile.writeAsBytes([0x52, 0x49, 0x46, 0x46]); // Simple WebP header
+      await webpFile
+          .writeAsBytes([0x52, 0x49, 0x46, 0x46]); // Simple WebP header
 
       final outputFile = fs.file('${tempDir.path}/output.webp');
 
-      // WebP files should not be processed for WebP conversion
-      // Since it's already WebP, no conversion happens
-      // This test now verifies that WebP files are skipped for conversion
-      expect(processor.isWebp(webpFile.path), isTrue);
-
-      // Test that WebP files are not converted (they pass through)
-      expect(processor.isPng(webpFile.path), isFalse);
-      expect(processor.isJpeg(webpFile.path), isFalse);
+      final results = await processor.processImageWithWebP(webpFile, outputFile,
+          fileSystem: fs);
+      expect(results, hasLength(1));
+      expect(results.single.success, isTrue);
+      expect(await outputFile.readAsBytes(), await webpFile.readAsBytes());
     });
   });
 }

@@ -1,68 +1,210 @@
 # Blog Builder
 
-A Dart-based static site generator for markdown blogs.
+A Dart static site generator using Markdown, YAML frontmatter, and Liquify templates.
 
-## Project Structure
+## Quick start
 
--   `bin/blog_builder.dart`: Main executable script.
--   `lib/`: Contains the core library code.
-    -   `src/config_models.dart`: Models for parsing `config.yaml`.
-    -   `src/page_models.dart`: Models for parsing Markdown files with frontmatter.
-    -   `src/template.dart`: Simple placeholder template engine.
-    -   `src/sitemap_generator.dart`: Utility to generate `sitemap.xml` (optional).
-    -   `blog_builder.dart`: Main library export file.
--   `pubspec.yaml`: Project dependencies and metadata.
--   `blog/`: Default input directory.
-    -   `config.yaml`: Site-wide configuration.
-    -   `content/`: Markdown source files (supports subdirectories).
-    -   `templates/`: HTML template files (e.g., `default.html`, `post.html`).
-    -   `assets/`: Static files (CSS, JS, images) to be copied.
--   `build/`: Default output directory for the generated site.
+```sh
+dart pub get
+dart run bin/blog_builder.dart --input example_blog --output build --no-announce
+dart run bin/blog_builder.dart check --input example_blog
+dart run bin/blog_builder.dart --input example_blog --serve --drafts
+```
 
-## Usage
+The default input is `example_blog`; the default output is `build`. A site contains:
 
-1.  **Install Dependencies:**
-    ```bash
-    cd blog_builder
-    dart pub get
-    ```
+```text
+site/
+  config.yaml
+  content/
+    index.md
+    posts/hello.md
+    projects/demo.md
+  templates/              # Optional overrides of bundled templates
+    _layouts/post.liquid
+    _includes/header.liquid
+  assets/                 # Copied into output/assets/
+```
 
-2.  **Create Content:**
-    -   Edit `blog/config.yaml` with your site settings.
-    -   Add your HTML templates (like `default.html`) to `blog/templates/`.
-    -   Add your markdown files (with YAML frontmatter) to `blog/content/`.
-        Example frontmatter:
-        ```yaml
-        ---
-        title: My First Post
-        date: 2023-10-27
-        layout: post # Optional: uses templates/post.html
-        published: true # Set to false for drafts
-        meta:
-          description: A short summary for SEO
-        ---
+Templates and the basic stylesheet have bundled defaults. Override individual files
+without copying an entire theme. `layout: post` resolves `_layouts/post.liquid`.
 
-        Your markdown content starts here...
-        ```
-    -   Place static assets (CSS, images) in `blog/assets/`.
+## Commands and preview
 
-3.  **Build the Site:**
-    ```bash
-    dart run bin/blog_builder.dart --input=blog --output=build
-    ```
-    Or use defaults:
-    ```bash
-    dart run bin/blog_builder.dart
-    ```
+| Option | Behavior |
+| --- | --- |
+| `build` (default) | Generate the site into a staging directory, then replace output |
+| `check` | Render in memory and report errors without writing output, cache, or frontmatter |
+| `--input`, `-i` | Source directory |
+| `--output`, `-o` | Generated site directory |
+| `--serve` | Watch and serve with live reload; defaults to `http://127.0.0.1:8080` |
+| `--watch`, `-w` | Watch and rebuild without starting a server |
+| `--drafts` | Include unpublished content in pages, archives, and search |
+| `--host`, `--port` | Preview bind address and port |
+| `--no-incremental` | Disable persistent cache reads and writes |
+| `--no-announce` | Disable build-time Bluesky anchor-post creation |
+| `--help`, `-h` | Show command usage |
 
-4.  **View Output:**
-    The generated static site will be in the `build/` directory. You can serve this directory using a simple HTTP server.
+Watch and preview builds are serialized; edits arriving during a build trigger one
+follow-up build. A failed rebuild leaves the previous site available and shows an
+error notice in the browser. Successful rebuilds reload connected pages. Drafts,
+watching, serving, and `check` always suppress Bluesky announcements.
 
-## Options
+Builds preserve the previous output on parsing, rendering, asset-processing, or
+writing failures. Successful builds remove stale pages and assets. Publication uses
+sibling staging and backup directories with rollback on rename failure; the two
+renames can briefly leave the output path absent. Use a separate output directory:
+it cannot overlap the input, content, templates, assets, or cache directories.
 
--   `--input` (`-i`): Specify the input directory (default: `blog`).
--   `--output` (`-o`): Specify the output directory (default: `build`).
--   `--help` (`-h`): Show help message.
+`check` reports duplicate routes, conflicting output paths, missing templates,
+invalid frontmatter, missing local images/assets, broken internal links, and missing
+anchors. It checks generated HTML, including `srcset`, without fetching external
+URLs or executing JavaScript. CSS URLs and data-URI `srcset` lists are not checked.
+Links outside a configured base path are treated as outside this site. It exits
+nonzero on errors. `check --drafts` includes drafts in validation.
+
+## Content and configuration
+
+```yaml
+---
+title: My first post
+date: 2026-09-16
+layout: post
+published: true
+tags: [Dart, Templates]
+categories: [Engineering]
+priority: 1
+meta:
+  description: A short summary
+  og:image: /assets/cover.png
+---
+
+## Getting started
+
+Your Markdown and Liquid content goes here.
+```
+
+`published` must be a YAML boolean; unpublished or omitted values are drafts.
+Dates use ISO 8601. Tags/categories accept lists or comma-separated strings.
+Additional frontmatter is available as `page.<field>`. Set `route` (or `url`) to
+override the path derived from the filename. `index.md` creates its directory's
+index page; absent indexes are generated automatically.
+
+```yaml
+title: My site
+owner: Your name
+baseUrl: https://example.com/docs/
+# base_path: /docs          # Defaults to the path portion of baseUrl
+collections:
+  posts:
+    title: Posts
+    layout: post
+    page_size: 10
+  projects:
+    path: projects
+    title: Projects
+    layout: post
+    page_size: 6
+pagination:
+  page_size: 10             # Default collection and taxonomy page size
+search:
+  enabled: true
+markdown:
+  highlight: true
+  heading_anchors: true
+  toc: true
+rss:
+  enabled: true
+  file_name: feed.xml
+  layouts: [post]
+```
+
+Collections group files under their configured content path. Explicit frontmatter
+`collection` can select a different group. Each configured collection gets an
+archive (`/projects/`) and subsequent pages (`/projects/page/2/`). A manual collection
+index retains its content and receives paginated `page.children` data; use
+`layout: list` to render the bundled listing. Tags and categories generate archives
+such as `/tags/dart/` and `/categories/engineering/`, also paginated. Conflicting
+slugs or routes fail the build.
+
+Items sort by ascending `priority`, then newest date, then route. Collections expose
+`site.collections.projects.all` and `.count`; taxonomies expose `site.tags.Dart`
+and `site.categories.Engineering`. Existing directory lookups such as
+`site.posts.all` and `site.posts.hello` remain available.
+
+## Templates, URLs, and SEO
+
+Layouts use Liquify inheritance; partials use scoped `render` arguments:
+
+```liquid
+{% layout '_layouts/default.liquid' %}
+{% block content %}
+  <h1>{{ page.title | escape }}</h1>
+  {{ page.toc }}
+  {{ content }}
+  {% render '_includes/pagination.liquid', page: page, site: site %}
+{% endblock %}
+```
+
+Content is rendered as Liquid, converted from Markdown, then inserted into the
+layout. Layout HTML itself is not processed as Markdown.
+
+| Value | Contents |
+| --- | --- |
+| `content`, `page.rendered_content` | Rendered page body |
+| `page.toc`, `page.headings` | TOC HTML and heading records (`id`, `title`, `level`) |
+| `page.previous`, `page.next` | Adjacent collection items in display order, with title and route |
+| `page.pagination` | `page`, `total_pages`, `total_items`, `page_size`, `previous`, `next`, `pages` |
+| `page.canonical_url`, `page.seo` | Canonical URL and social metadata |
+| `page.formatted_date`, `page.long_date` | Preformatted date strings |
+
+Use `relative_url` for mounted paths and `absolute_url` for full URLs:
+
+```liquid
+<a href="{{ page.route | relative_url }}">{{ page.title | escape }}</a>
+{{ '/assets/cover.png' | absolute_url }}
+{% render '_includes/seo.liquid', page: page, site: site %}
+```
+
+The filters also work inside rendered partials. With the configuration above,
+`/posts/hello/` becomes `/docs/posts/hello/` or
+`https://example.com/docs/posts/hello/`. Root-relative HTML links, image sources,
+forms, posters, and `srcset` entries are mounted automatically. External URLs and
+fragment links are preserved; already-mounted paths are not prefixed twice. Use
+filters or explicit paths for URLs embedded in CSS or JavaScript. RSS and sitemap
+URLs include the base path. Files still live directly in the output directory;
+serve or deploy that directory at the configured mount point.
+
+The default layout includes canonical, description, Open Graph, and Twitter tags.
+Custom layouts can render the SEO partial explicitly. Set `baseUrl` for absolute
+canonical URLs, RSS, and a sitemap.
+
+## Markdown and search
+
+Fenced code blocks with a recognized language receive syntax highlighting;
+unknown languages remain escaped code. Headings receive stable, unique anchors.
+The bundled post layout displays the TOC; custom layouts can insert `page.toc`.
+Include `/assets/css/site.css` in fully custom layouts for the bundled styling.
+Each Markdown feature can be disabled independently in configuration.
+
+Search is enabled by default and generates `/search/`, `/search-index.json`, and
+`/assets/js/search.js`. It searches rendered text, titles, and tags entirely in the
+browser, ranks title matches first, and supports `/search/?q=your+query`. It excludes
+index pages and drafts unless `--drafts` is used. Disable it with
+`search.enabled: false` if you want to supply your own `/search/` page.
+
+## Incremental builds
+
+The cache lives under `<input>/.blog-cache/v1/`. It stores parsed pages, rendered
+content/layouts, and processed assets. Content hashes detect edits, including
+changes whose file timestamps have not advanced. Layout and partial dependencies,
+accessed site data, configuration, and image options invalidate affected entries.
+Templates using the date values `'now'` or `'today'` are rendered afresh. Every build
+assembles a complete staging directory so deletions never leave stale output.
+
+The cache persists across CLI invocations. Delete `.blog-cache` to reclaim space;
+it is disposable and excluded from watching. Add it to your site's ignore rules.
+`--no-incremental` provides a clean comparison without reading or updating it.
 
 ## Image Optimization
 
@@ -149,7 +291,7 @@ at_uri: at://did:plc:xxx/app.bsky.feed.post/xxx
 Include the comments partial in your post template:
 
 ```liquid
-{% render 'comments' %}
+{% render '_includes/comments.liquid', page: page, site: site %}
 ```
 
 ### Benefits
@@ -158,3 +300,17 @@ Include the comments partial in your post template:
 - **Built-in Moderation**: Leverages Bluesky's native moderation tools
 - **Network Effects**: Comments appear in users' Bluesky timelines
 - **Identity Verification**: Real user identities reduce spam
+
+## Development checks
+
+```sh
+dart analyze
+dart test
+cd js-build && npm test
+```
+
+WebP integration tests require `cwebp`. The Dart suite covers failed-build
+preservation, validation, template dependency invalidation, collections, URLs,
+Markdown, search indexing, and the HTTP/SSE preview server. JavaScript tests cover
+comment rendering and browser search behavior. Rebuild the comments bundle with
+`npm run build` in `js-build` after changing its source.

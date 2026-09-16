@@ -6,7 +6,7 @@ import 'package:blog_builder/blog_builder.dart';
 
 class RSSGenerator {
   // RFC 822 date format for RSS feeds
-  static final String _rfc822Format = 'EEE, dd MMM yyyy HH:mm:ss Z';
+  static final String _rfc822Format = "EEE, dd MMM yyyy HH:mm:ss 'GMT'";
 
   /// Generate RSS 2.0 feed from PageModel objects
   static Future<void> generateFromPageModels(
@@ -57,7 +57,8 @@ class RSSGenerator {
         await file.parent.create(recursive: true);
       }
       await file.writeAsString(rss.toXmlString(pretty: true, indent: '  '));
-      print('RSS feed generated successfully at $outFile (${feedItems.length} items)');
+      print(
+          'RSS feed generated successfully at $outFile (${feedItems.length} items)');
     } catch (e) {
       print('Error writing RSS feed file $outFile: $e');
       rethrow;
@@ -76,7 +77,7 @@ class RSSGenerator {
         config.metadata['og:description'] ??
         config.metadata['description'] ??
         '';
-    final feedUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+    final feedUrl = SiteUrls(config).absolute('/');
     final feedSelfUrl = '$feedUrl${config.rss.fileName}';
 
     // Create root element with namespaces
@@ -120,7 +121,8 @@ class RSSGenerator {
 
     // Add items
     for (final item in items) {
-      channelElement.children.add(_buildItemElement(item, baseUrl));
+      channelElement.children.add(_buildItemElement(item,
+          SiteUrls(config).absolute('/').replaceFirst(RegExp(r'/+$'), '')));
     }
 
     rssElement.children.add(channelElement);
@@ -130,7 +132,7 @@ class RSSGenerator {
 
   /// Build an RSS item element from a PageModel
   static XmlElement _buildItemElement(PageModel item, String baseUrl) {
-    final itemUrl = '$baseUrl${item.route}';
+    final itemUrl = "${baseUrl.replaceFirst(RegExp(r'/+$'), '')}${item.route}";
     final itemLink = itemUrl.endsWith('/') ? itemUrl : '$itemUrl/';
 
     final itemElement = XmlElement(XmlName('item'), [], [
@@ -161,8 +163,9 @@ class RSSGenerator {
     ]);
 
     // Add categories from metadata if available
-    final keywords =
-        item.metadata['keywords'] ?? item.metadata['category'] ?? item.metadata['tag'];
+    final keywords = item.metadata['keywords'] ??
+        item.metadata['category'] ??
+        item.metadata['tag'];
     if (keywords != null && keywords.isNotEmpty) {
       for (final keyword in keywords.split(',')) {
         final trimmed = keyword.trim();
@@ -182,6 +185,6 @@ class RSSGenerator {
 
   /// Format DateTime to RFC 822 string for RSS
   static String _formatDate(DateTime date) {
-    return DateFormat(_rfc822Format).format(date.toUtc());
+    return DateFormat(_rfc822Format, 'en_US').format(date.toUtc());
   }
 }

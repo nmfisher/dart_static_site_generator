@@ -4,10 +4,8 @@ import 'package:liquify/liquify.dart';
 
 /// A Liquify Root implementation that tries a primary [Root] first,
 /// and falls back to a secondary [Root] if the template resolution fails
-/// in the primary one.
-///
-/// According to liquify 1.0.1's Root interface, resolve methods must throw
-/// an exception if the template cannot be found, rather than returning null.
+/// in the primary one. Both roots must use `throwOnMissing: true` so that
+/// an intentionally empty partial remains a valid override.
 class FallbackRoot implements Root {
   final Root primaryRoot;
   final Root fallbackRoot;
@@ -20,7 +18,7 @@ class FallbackRoot implements Root {
     try {
       final Source source = await primaryRoot.resolveAsync(path);
       return source;
-    } catch (e) {
+    } on TemplateNotFoundException {
       // Primary failed to resolve, try fallback
       if (logFallbacks) {
         print(
@@ -28,10 +26,6 @@ class FallbackRoot implements Root {
       }
 
       final Source fallbackSource = await fallbackRoot.resolveAsync(path);
-      if (fallbackSource.content.trim().isEmpty) {
-        throw Exception(
-            "Warning: Resolved template '$path' from fallback, but content is empty.");
-      }
 
       if (logFallbacks) {
         print("  -> Using bundled default template for: $path");
@@ -45,7 +39,7 @@ class FallbackRoot implements Root {
     try {
       final Source source = primaryRoot.resolve(path);
       return source;
-    } catch (e) {
+    } on TemplateNotFoundException {
       // Primary failed to resolve, try fallback
       if (logFallbacks) {
         print(
@@ -53,10 +47,6 @@ class FallbackRoot implements Root {
       }
 
       final Source fallbackSource = fallbackRoot.resolve(path);
-      if (fallbackSource.content.trim().isEmpty) {
-        throw Exception(
-            "Warning: Resolved template '$path' from fallback, but content is empty.");
-      }
 
       if (logFallbacks) {
         print("  -> Using bundled default template for: $path");
@@ -64,7 +54,4 @@ class FallbackRoot implements Root {
       return fallbackSource;
     }
   }
-
-  @override
-  Root? get parent => null;
 }

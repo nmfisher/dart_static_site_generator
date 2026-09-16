@@ -1,33 +1,29 @@
-import 'dart:io';
 import 'package:blog_builder/blog_builder.dart';
 import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:xml/xml.dart';
 
 class SitemapGenerator {
-
-
   // Example alternative: Generate using PageModel objects
-   static Future<void> generateFromPageModels(List<PageModel> pages, String host, {
-     required String outFile,
-     FileSystem fileSystem = const LocalFileSystem()}) async {
-     _generateInternal(
+  static Future<void> generateFromPageModels(List<PageModel> pages, String host,
+      {required String outFile,
+      FileSystem fileSystem = const LocalFileSystem()}) async {
+    await _generateInternal(
         pages
-          .where((p) => !p.draft) // Only include non-draft pages
-          .map((p) => _SitemapEntry(
-             loc: "$host${p.route}",
-             lastmod: p.date ?? DateTime.now(), // Use page date or fallback
-             priority: _calculatePriority(p.route)
-          )).toList(),
+            .where((p) => !p.draft) // Only include non-draft pages
+            .map((p) => _SitemapEntry(
+                loc: "${host.replaceFirst(RegExp(r'/+$'), '')}${p.route}",
+                lastmod: p.date ?? DateTime.now(), // Use page date or fallback
+                priority: _calculatePriority(p.route)))
+            .toList(),
         outFile,
-        fileSystem
-     );
-   }
-
+        fileSystem);
+  }
 
   // Internal generation logic
-  static Future<void> _generateInternal(List<_SitemapEntry> entries, String outFile, FileSystem fileSystem) async {
-      XmlElement urlset = XmlElement(
+  static Future<void> _generateInternal(List<_SitemapEntry> entries,
+      String outFile, FileSystem fileSystem) async {
+    XmlElement urlset = XmlElement(
       XmlName('urlset'),
       [
         XmlAttribute(
@@ -61,35 +57,39 @@ class SitemapGenerator {
     var document = XmlDocument([urlset]);
 
     try {
-       final file = fileSystem.file(outFile);
-       // Ensure the directory exists
-       if (!await file.parent.exists()) { // Use async exists with MemoryFileSystem
-          await file.parent.create(recursive: true); // Use async create
-       }
-       await file.writeAsString(document.toXmlString(pretty: true, indent: '  ')); // Use async write
-       print('Sitemap generated successfully at $outFile');
+      final file = fileSystem.file(outFile);
+      // Ensure the directory exists
+      if (!await file.parent.exists()) {
+        // Use async exists with MemoryFileSystem
+        await file.parent.create(recursive: true); // Use async create
+      }
+      await file.writeAsString(
+          document.toXmlString(pretty: true, indent: '  ')); // Use async write
+      print('Sitemap generated successfully at $outFile');
     } catch (e) {
-       print('Error writing sitemap file $outFile: $e');
+      print('Error writing sitemap file $outFile: $e');
+      rethrow;
     }
   }
 
-   // Helper to calculate priority based on path depth or rules
+  // Helper to calculate priority based on path depth or rules
   static double _calculatePriority(String path) {
-     if (path == "/") return 1.0;
-     // Example rule: less depth = higher priority
-     int depth = path.split('/').where((s) => s.isNotEmpty).length;
-     if (depth == 1) return 0.8;
-     if (depth == 2) return 0.6;
-     return 0.5; // Default priority
-     // Add more specific rules if needed (e.g., path.startsWith('/blog'))
+    if (path == "/") return 1.0;
+    // Example rule: less depth = higher priority
+    int depth = path.split('/').where((s) => s.isNotEmpty).length;
+    if (depth == 1) return 0.8;
+    if (depth == 2) return 0.6;
+    return 0.5; // Default priority
+    // Add more specific rules if needed (e.g., path.startsWith('/blog'))
   }
 }
 
 // Internal helper class for sitemap entries
 class _SitemapEntry {
-   final String loc;
-   final DateTime lastmod;
-   final double priority;
+  final String loc;
+  final DateTime lastmod;
+  final double priority;
 
-   _SitemapEntry({required this.loc, required this.lastmod, required this.priority});
+  _SitemapEntry(
+      {required this.loc, required this.lastmod, required this.priority});
 }

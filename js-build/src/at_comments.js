@@ -11,6 +11,7 @@ class AtCommentsWidget {
     this.turnstileSiteKey = turnstileSiteKey;
     this.threadData = null;
     this.turnstileWidgetId = null;
+    this.gatePassed = false;
     // Extract the post rkey for searching quotes
     this.postRkey = uri.split('/').pop();
     // Track reply state
@@ -28,69 +29,91 @@ class AtCommentsWidget {
 
   async loadComments() {
     try {
-      // Add cache-busting timestamp to avoid stale responses
       const cacheBust = Date.now();
       const url = `${this.appViewUrl}/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(this.uri)}&depth=10&_t=${cacheBust}`;
       const response = await fetch(url, {
-        cache: 'no-store',
+        cache: "no-store",
         headers: {
-          'Cache-Control': 'no-cache',
-        },
+          "Cache-Control": "no-cache"
+        }
       });
-
       if (!response.ok) {
         throw new Error(`Failed to fetch comments: ${response.status}`);
       }
-
       const data = await response.json();
       this.threadData = data.thread;
-
-      // Get the root post author's handle (the bot account)
       const rootAuthor = this.threadData?.post?.author?.handle;
-
-      // Debug logging
-      console.log('AtComments: Thread data loaded', {
+      console.log("AtComments: Thread data loaded", {
         uri: this.uri,
         replyCount: this.threadData?.post?.replyCount,
         repliesCount: this.threadData?.replies?.length,
-        rootAuthor,
+        rootAuthor
       });
-
-      // If the root post author is different from the current widget user,
-      // we may need to fetch self-replies separately
       if (rootAuthor && this.threadData?.replies?.length < this.threadData?.post?.replyCount) {
-        console.log('AtComments: Fetching additional replies from root author');
+        console.log("AtComments: Fetching additional replies from root author");
         const authorReplies = await this.fetchAuthorReplies(rootAuthor);
         if (authorReplies && authorReplies.length > 0) {
           try {
             this.buildThreadTree(authorReplies);
           } catch (error) {
-            console.error('AtComments: Error building thread tree:', error);
+            console.error("AtComments: Error building thread tree:", error);
           }
         }
       }
-
-      // Clear container and render
-      this.container.innerHTML = '';
-
-      // Render comment form first
-      this.renderCommentForm();
-
-      // Render thread
-      if (this.threadData && this.threadData.replies) {
-        const threadContainer = document.createElement('div');
-        threadContainer.className = 'at-comments-thread';
-        this.renderReplies(this.threadData.replies, threadContainer, 0);
-        this.container.appendChild(threadContainer);
-      }
+      this.container.innerHTML = "";
+      this.renderCaptchaGate();
     } catch (error) {
-      console.error('Error loading comments:', error);
-      this.container.innerHTML = '';
-      this.renderCommentForm();
-      this.showStatus('Failed to load comments', 'error');
+      console.error("Error loading comments:", error);
+      this.container.innerHTML = "";
+      this.renderCaptchaGate();
     }
   }
-
+  renderCaptchaGate() {
+    this.container.innerHTML = `
+      <div class="at-captcha-gate">
+        <p class="at-captcha-gate-text">Please verify you are human to view comments</p>
+        <div id="at-comments-turnstile-gate" class="at-comments-turnstile-gate"></div>
+      </div>
+    `;
+    this.renderGateTurnstile();
+  }
+  renderGateTurnstile() {
+    if (!this.turnstileSiteKey) {
+      console.warn("AtComments: No Turnstile site key provided, showing comments directly");
+      this.showComments();
+      return;
+    }
+    const container = document.getElementById("at-comments-turnstile-gate");
+    if (!container) return;
+    const renderWidget = () => {
+      if (typeof turnstile !== "undefined") {
+        this.turnstileWidgetId = turnstile.render(container, {
+          sitekey: this.turnstileSiteKey,
+          callback: () => {
+            this.showComments();
+          }
+        });
+      } else {
+        setTimeout(renderWidget, 100);
+      }
+    };
+    renderWidget();
+  }
+  showComments() {
+    if (typeof turnstile !== "undefined" && this.turnstileWidgetId !== null) {
+      turnstile.remove(this.turnstileWidgetId);
+      this.turnstileWidgetId = null;
+    }
+    this.gatePassed = true;
+    this.container.innerHTML = "";
+    this.renderCommentForm();
+    if (this.threadData && this.threadData.replies) {
+      const threadContainer = document.createElement("div");
+      threadContainer.className = "at-comments-thread";
+      this.renderReplies(this.threadData.replies, threadContainer, 0);
+      this.container.appendChild(threadContainer);
+    }
+  }
   renderReplies(replies, container, depth = 0) {
     if (!replies || replies.length === 0) return;
 
@@ -221,6 +244,12 @@ class AtCommentsWidget {
     console.log(`AtComments: Rebuilt thread tree with ${postMap.size} total posts, ${topLevel.length} top-level`);
   }
 
+  formatDate(isoString) {
+    return new Date(isoString).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+    });
+  }
+
   createCommentElement(post, depth = 0) {
     const div = document.createElement('div');
     div.className = 'at-comment';
@@ -233,18 +262,23 @@ class AtCommentsWidget {
     const record = post.record;
     const commentText = record.text;
 
-    div.innerHTML = `
-      <div class="at-comment-body">${this.escapeHtml(commentText)}</div>
-      <button class="at-comment-reply-btn" data-uri="${post.uri}" data-text="${this.escapeHtml(commentText)}">
-        Reply
-      </button>
-    `;
+    const date = document.createElement('div');
+    date.className = 'at-comment-date';
+    date.textContent = this.formatDate(record.createdAt);
+    div.appendChild(date);
 
-    // Add reply button click handler
-    const replyBtn = div.querySelector('.at-comment-reply-btn');
-    if (replyBtn) {
-      replyBtn.addEventListener('click', () => this.setReplyTo(post.uri, commentText));
-    }
+    const body = document.createElement('div');
+    body.className = 'at-comment-body';
+    body.textContent = commentText;
+    div.appendChild(body);
+
+    const replyBtn = document.createElement('button');
+    replyBtn.className = 'at-comment-reply-btn';
+    replyBtn.dataset.uri = post.uri;
+    replyBtn.dataset.text = commentText;
+    replyBtn.textContent = 'Reply';
+    replyBtn.addEventListener('click', () => this.setReplyTo(post.uri, commentText));
+    div.appendChild(replyBtn);
 
     return div;
   }
@@ -285,7 +319,7 @@ class AtCommentsWidget {
           <div class="at-comment-form-footer">
             <span class="at-comment-char-count">0/280</span>
           </div>
-          <div id="at-comment-turnstile" class="at-comment-turnstile"></div>
+          ${!this.gatePassed ? '<div id="at-comment-turnstile" class="at-comment-turnstile"></div>' : ''}
           <button class="at-comment-submit-btn" id="at-comment-submit" disabled>
             Post Comment
           </button>
@@ -299,7 +333,7 @@ class AtCommentsWidget {
     this.setupFormListeners(formContainer);
 
     // Render Turnstile widget
-    this.renderTurnstile();
+    if (!this.gatePassed) this.renderTurnstile();
   }
 
   setupFormListeners(formContainer) {
@@ -371,6 +405,7 @@ class AtCommentsWidget {
   }
 
   getTurnstileToken() {
+    if (this.gatePassed) return 'gate-passed';
     if (typeof turnstile !== 'undefined' && this.turnstileWidgetId !== null) {
       return turnstile.getResponse(this.turnstileWidgetId);
     }

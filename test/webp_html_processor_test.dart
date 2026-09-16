@@ -19,7 +19,8 @@ void main() {
       final result = processor.processHtml(html);
 
       expect(result, contains('<picture>'));
-      expect(result, contains('<source srcset="/assets/image.webp" type="image/webp">'));
+      expect(result,
+          contains('<source srcset="/assets/image.webp" type="image/webp">'));
       expect(result, contains('<img src="/assets/image.png" alt="Test">'));
       expect(result, contains('</picture>'));
     });
@@ -46,7 +47,8 @@ void main() {
     test('preserves all attributes from original img tag', () {
       processor.registerWebPConversion('assets/hero.png', 'assets/hero.webp');
 
-      final html = '<img src="/assets/hero.png" alt="Hero" class="hero-image" id="main-hero" loading="lazy">';
+      final html =
+          '<img src="/assets/hero.png" alt="Hero" class="hero-image" id="main-hero" loading="lazy">';
       final result = processor.processHtml(html);
 
       expect(result, contains('alt="Hero"'));
@@ -62,7 +64,8 @@ void main() {
       final result = processor.processHtml(html);
 
       expect(result, contains('<picture>'));
-      expect(result, contains('<source srcset="/assets/image.webp" type="image/webp">'));
+      expect(result,
+          contains('<source srcset="/assets/image.webp" type="image/webp">'));
     });
 
     test('handles single-quoted attributes', () {
@@ -121,8 +124,10 @@ void main() {
     test('getWebPPath returns correct path', () {
       processor.registerWebPConversion('assets/image.png', 'assets/image.webp');
 
-      expect(processor.getWebPPath('assets/image.png'), equals('assets/image.webp'));
-      expect(processor.getWebPPath('/assets/image.png'), equals('assets/image.webp'));
+      expect(processor.getWebPPath('assets/image.png'),
+          equals('assets/image.webp'));
+      expect(processor.getWebPPath('/assets/image.png'),
+          equals('assets/image.webp'));
       expect(processor.getWebPPath('assets/other.png'), isNull);
     });
   });

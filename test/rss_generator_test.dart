@@ -125,7 +125,10 @@ void main() {
       expect(content, contains('<item>'));
       expect(content, contains('<title>First Post</title>'));
       expect(content, contains('<title>Second Post</title>'));
-      expect(content, contains('<content:encoded>&lt;p>Content of first post&lt;/p></content:encoded>'));
+      expect(
+          content,
+          contains(
+              '<content:encoded>&lt;p>Content of first post&lt;/p></content:encoded>'));
     });
 
     test('filters out draft pages', () async {
@@ -296,7 +299,8 @@ void main() {
 
       final content = await fs.file(outFile).readAsString();
       expect(content, contains('<title>Custom Feed Title</title>'));
-      expect(content, contains('<description>Custom feed description</description>'));
+      expect(content,
+          contains('<description>Custom feed description</description>'));
     });
 
     test('excludes pages without dates', () async {

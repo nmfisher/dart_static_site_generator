@@ -56,12 +56,18 @@ void main() {
         date: null,
         draft: false,
         isIndex: false,
-      )..renderedContent = '<p>This is page content with <strong>markdown</strong></p>\n';
+      )..renderedContent =
+          '<p>This is page content with <strong>markdown</strong></p>\n';
 
-      final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData, layoutName: 'markdown_test');
+      final result = await renderer.renderPageWithLayout(
+          page, testConfig, dummySiteData,
+          layoutName: 'markdown_test');
 
       // The page content markdown should be processed
-      expect(result, contains('<p>This is page content with <strong>markdown</strong></p>'));
+      expect(
+          result,
+          contains(
+              '<p>This is page content with <strong>markdown</strong></p>'));
 
       // But the markdown syntax in the template should remain as raw text
       expect(result, contains('![logo](./assets/logo.png)'));
@@ -103,7 +109,9 @@ void main() {
         isIndex: false,
       )..renderedContent = '<p>Page content</p>\n';
 
-      final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData, layoutName: 'html_test');
+      final result = await renderer.renderPageWithLayout(
+          page, testConfig, dummySiteData,
+          layoutName: 'html_test');
 
       // The HTML img tag should be preserved
       expect(result, contains('<img src="./assets/logo.png" alt="logo" />'));
@@ -142,19 +150,29 @@ Both should be converted to HTML''',
       );
 
       // First pass - render markdown content
-      final renderedContent = await renderer.renderContent(page, testConfig, dummySiteData);
+      final renderedContent =
+          await renderer.renderContent(page, testConfig, dummySiteData);
       page.renderedContent = renderedContent;
 
       // Second pass - render with layout
-      final result = await renderer.renderPageWithLayout(page, testConfig, dummySiteData, layoutName: 'separation_test');
+      final result = await renderer.renderPageWithLayout(
+          page, testConfig, dummySiteData,
+          layoutName: 'separation_test');
 
       // Page content markdown should be processed
-      expect(result, contains('<h1>This is a heading in page content</h1>'));
+      expect(
+          result,
+          contains(
+              '<h1 id="this-is-a-heading-in-page-content">This is a heading in page content'));
       expect(result, contains('<ul>'));
-      expect(result, contains('<li>This is a list item in page content\nBoth should be converted to HTML</li>'));
+      expect(
+          result,
+          contains(
+              '<li>This is a list item in page content\nBoth should be converted to HTML</li>'));
 
       // Template markdown should remain as raw text
-      expect(result, contains('# This is a heading in template (should stay as text)'));
+      expect(result,
+          contains('# This is a heading in template (should stay as text)'));
       expect(result, contains('* List item in template (should stay as text)'));
     });
   });

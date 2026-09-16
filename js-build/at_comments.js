@@ -1,5 +1,27 @@
-(() => {
+var AtComments = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
   // src/at_comments.js
+  var at_comments_exports = {};
+  __export(at_comments_exports, {
+    default: () => at_comments_default
+  });
   var AtCommentsWidget = class {
     constructor(containerId, uri, appViewUrl, turnstileSiteKey) {
       this.container = document.getElementById(containerId);
@@ -8,6 +30,7 @@
       this.turnstileSiteKey = turnstileSiteKey;
       this.threadData = null;
       this.turnstileWidgetId = null;
+      this.gatePassed = false;
       this.postRkey = uri.split("/").pop();
       this.replyToPost = null;
     }
@@ -52,18 +75,57 @@
           }
         }
         this.container.innerHTML = "";
-        this.renderCommentForm();
-        if (this.threadData && this.threadData.replies) {
-          const threadContainer = document.createElement("div");
-          threadContainer.className = "at-comments-thread";
-          this.renderReplies(this.threadData.replies, threadContainer, 0);
-          this.container.appendChild(threadContainer);
-        }
+        this.renderCaptchaGate();
       } catch (error) {
         console.error("Error loading comments:", error);
         this.container.innerHTML = "";
-        this.renderCommentForm();
-        this.showStatus("Failed to load comments", "error");
+        this.renderCaptchaGate();
+      }
+    }
+    renderCaptchaGate() {
+      this.container.innerHTML = `
+      <div class="at-captcha-gate">
+        <p class="at-captcha-gate-text">Please verify you are human to view comments</p>
+        <div id="at-comments-turnstile-gate" class="at-comments-turnstile-gate"></div>
+      </div>
+    `;
+      this.renderGateTurnstile();
+    }
+    renderGateTurnstile() {
+      if (!this.turnstileSiteKey) {
+        console.warn("AtComments: No Turnstile site key provided, showing comments directly");
+        this.showComments();
+        return;
+      }
+      const container = document.getElementById("at-comments-turnstile-gate");
+      if (!container) return;
+      const renderWidget = () => {
+        if (typeof turnstile !== "undefined") {
+          this.turnstileWidgetId = turnstile.render(container, {
+            sitekey: this.turnstileSiteKey,
+            callback: () => {
+              this.showComments();
+            }
+          });
+        } else {
+          setTimeout(renderWidget, 100);
+        }
+      };
+      renderWidget();
+    }
+    showComments() {
+      if (typeof turnstile !== "undefined" && this.turnstileWidgetId !== null) {
+        turnstile.remove(this.turnstileWidgetId);
+        this.turnstileWidgetId = null;
+      }
+      this.gatePassed = true;
+      this.container.innerHTML = "";
+      this.renderCommentForm();
+      if (this.threadData && this.threadData.replies) {
+        const threadContainer = document.createElement("div");
+        threadContainer.className = "at-comments-thread";
+        this.renderReplies(this.threadData.replies, threadContainer, 0);
+        this.container.appendChild(threadContainer);
       }
     }
     renderReplies(replies, container, depth = 0) {
@@ -163,6 +225,13 @@
       this.threadData.replies = topLevel;
       console.log(`AtComments: Rebuilt thread tree with ${postMap.size} total posts, ${topLevel.length} top-level`);
     }
+    formatDate(isoString) {
+      return new Date(isoString).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      });
+    }
     createCommentElement(post, depth = 0) {
       const div = document.createElement("div");
       div.className = "at-comment";
@@ -171,16 +240,21 @@
       }
       const record = post.record;
       const commentText = record.text;
-      div.innerHTML = `
-      <div class="at-comment-body">${this.escapeHtml(commentText)}</div>
-      <button class="at-comment-reply-btn" data-uri="${post.uri}" data-text="${this.escapeHtml(commentText)}">
-        Reply
-      </button>
-    `;
-      const replyBtn = div.querySelector(".at-comment-reply-btn");
-      if (replyBtn) {
-        replyBtn.addEventListener("click", () => this.setReplyTo(post.uri, commentText));
-      }
+      const date = document.createElement("div");
+      date.className = "at-comment-date";
+      date.textContent = this.formatDate(record.createdAt);
+      div.appendChild(date);
+      const body = document.createElement("div");
+      body.className = "at-comment-body";
+      body.textContent = commentText;
+      div.appendChild(body);
+      const replyBtn = document.createElement("button");
+      replyBtn.className = "at-comment-reply-btn";
+      replyBtn.dataset.uri = post.uri;
+      replyBtn.dataset.text = commentText;
+      replyBtn.textContent = "Reply";
+      replyBtn.addEventListener("click", () => this.setReplyTo(post.uri, commentText));
+      div.appendChild(replyBtn);
       return div;
     }
     renderCommentForm() {
@@ -217,7 +291,7 @@
           <div class="at-comment-form-footer">
             <span class="at-comment-char-count">0/280</span>
           </div>
-          <div id="at-comment-turnstile" class="at-comment-turnstile"></div>
+          ${!this.gatePassed ? '<div id="at-comment-turnstile" class="at-comment-turnstile"></div>' : ""}
           <button class="at-comment-submit-btn" id="at-comment-submit" disabled>
             Post Comment
           </button>
@@ -227,7 +301,7 @@
       <div class="at-comment-form-status"></div>
     `;
       this.setupFormListeners(formContainer);
-      this.renderTurnstile();
+      if (!this.gatePassed) this.renderTurnstile();
     }
     setupFormListeners(formContainer) {
       const nameInput = document.getElementById("at-comment-name");
@@ -284,6 +358,7 @@
       renderWidget();
     }
     getTurnstileToken() {
+      if (this.gatePassed) return "gate-passed";
       if (typeof turnstile !== "undefined" && this.turnstileWidgetId !== null) {
         return turnstile.getResponse(this.turnstileWidgetId);
       }
@@ -381,5 +456,6 @@
     window.AtCommentsWidget = AtCommentsWidget;
   }
   var at_comments_default = AtCommentsWidget;
+  return __toCommonJS(at_comments_exports);
 })();
 //# sourceMappingURL=at_comments.js.map

@@ -172,7 +172,8 @@ void main() {
       // Create a GIF file (not supported in Phase 1)
       final inputFile = fs.file('/input/test.gif');
       inputFile.parent.createSync(recursive: true);
-      inputFile.writeAsBytesSync(Uint8List.fromList([71, 73, 70, 56, 57, 97])); // GIF header
+      inputFile.writeAsBytesSync(
+          Uint8List.fromList([71, 73, 70, 56, 57, 97])); // GIF header
 
       final outputFile = fs.file('/output/test.gif');
       outputFile.parent.createSync(recursive: true);

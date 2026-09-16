@@ -1,132 +1,72 @@
-import 'dart:io';
 import 'dart:isolate';
-import 'package:file/local.dart';
+import 'package:blog_builder/blog_builder.dart';
+import 'package:blog_builder/src/renderer.dart';
+import 'package:blog_builder/src/site_data_model.dart';
+import 'package:html/parser.dart' as html;
 import 'package:liquify/liquify.dart';
-import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
-  group('Default Template Parsing Tests', () {
-    late Root defaultTemplateRoot;
-    late String defaultTemplatesPath;
-
-    setUpAll(() async {
-      // Find the bundled default templates directory
-      final packageUri = Uri.parse('package:blog_builder/src/defaults/');
-      final resolvedUri = await Isolate.resolvePackageUri(packageUri);
-
-      if (resolvedUri == null) {
-        fail(
-            'Could not resolve package URI for bundled templates: $packageUri. '
-            'Ensure the blog_builder package structure is correct.');
-      }
-
-      defaultTemplatesPath = p.fromUri(resolvedUri);
-      final templatesDir = Directory(defaultTemplatesPath);
-      if (!await templatesDir.exists()) {
-        fail(
-            'Bundled templates directory not found at resolved path: $defaultTemplatesPath');
-      }
-
-      print(
-          'Resolved default templates path for testing: $defaultTemplatesPath');
-      defaultTemplateRoot =
-          FileSystemRoot(defaultTemplatesPath, fileSystem: LocalFileSystem());
-    });
-
-    // Helper function to read template content
-    Future<String> readTemplate(String relativePath) async {
-      final file = File(p.join(defaultTemplatesPath, relativePath));
-      if (!await file.exists()) {
-        fail('Template file not found for testing: ${file.path}');
-      }
-      return file.readAsString();
-    }
-
-    test('Parses _layouts/default.liquid successfully', () async {
-      final content = await readTemplate('_layouts/default.liquid');
-      final template = Template.parse(
-        content,
-        root: defaultTemplateRoot, // Root needed for {% render %}
-      );
-      final rendered = template.render();
-      print(rendered);
-      expect(true,true);
-    });
-
-    test('Parses _layouts/post.liquid successfully', () async {
-      final content = await readTemplate('_layouts/post.liquid');
-      expect(
-        () => Template.parse(
-          content,
-          root:
-              defaultTemplateRoot, // Root needed for {% layout %} and potentially {% render %}
-        ),
-        returnsNormally,
-        reason: 'Parsing _layouts/post.liquid should succeed.',
-      );
-    });
-
-    test('Parses _layouts/list.liquid successfully', () async {
-      final content = await readTemplate('_layouts/list.liquid');
-      expect(
-        () => Template.parse(
-          content,
-          root:
-              defaultTemplateRoot, // Root needed for {% layout %} and potentially {% render %}
-        ),
-        returnsNormally,
-        reason: 'Parsing _layouts/list.liquid should succeed.',
-      );
-    });
-
-    test('Parses _includes/header.liquid successfully', () async {
-      final content = await readTemplate('_includes/header.liquid');
-      // Includes often don't *need* a root just for parsing unless they contain {% render %} themselves
-      // But providing it is safer and consistent.
-      expect(
-        () => Template.parse(
-          content,
-          root: defaultTemplateRoot,
-        ),
-        returnsNormally,
-        reason: 'Parsing _includes/header.liquid should succeed.',
-      );
-    });
-
-    test('Parses _includes/footer.liquid successfully', () async {
-      final content = await readTemplate('_includes/footer.liquid');
-      expect(
-        () => Template.parse(
-          content,
-          root: defaultTemplateRoot,
-        ),
-        returnsNormally,
-        reason: 'Parsing _includes/footer.liquid should succeed.',
-      );
-    });
-
-    // Test to check that table rendering functionality works
-    test('Renders tables correctly in template contexts', () async {
-      final postLayoutContent = await readTemplate('_layouts/post.liquid');
-      final postTemplate = Template.parse(
-        postLayoutContent,
-        root: defaultTemplateRoot,
-      );
-      
-      // Test that template can render without errors
-      expect(() => postTemplate.render(), returnsNormally);
-    });
-
-    test('Handles table markdown in content context', () async {
-      final contentTemplate = await readTemplate('_layouts/default.liquid');
-      final template = Template.parse(
-        contentTemplate,
-        root: defaultTemplateRoot,
-      );
-      
-      // Test basic rendering
-      expect(() => template.render(), returnsNormally);
-    });
+  late TemplateRenderer renderer;
+  setUpAll(() async {
+    final uri = await Isolate.resolvePackageUri(
+        Uri.parse('package:blog_builder/src/defaults/'));
+    renderer = TemplateRenderer(
+        FileSystemRoot(uri!.toFilePath(), throwOnMissing: true));
   });
+  for (final layout in ['default', 'home', 'post', 'list']) {
+    test('bundled $layout renders real page data and inherited partials',
+        () async {
+      final child = PageModel.fromMap({
+        'title': 'Child post',
+        'route': '/posts/child',
+        'date': DateTime(2024, 1, 15)
+      });
+      final page = layout == 'list'
+          ? PageIndexPageModel.fromMap({
+              'title': 'Page title',
+              'route': '/posts',
+              'layoutId': layout,
+              'children': [child]
+            })
+          : PageModel.fromMap({
+              'title': 'Page title',
+              'route': '/page',
+              'layoutId': layout,
+              'date': DateTime(2024, 1, 15),
+              'atUri': 'at://did:plc:test/app.bsky.feed.post/test'
+            });
+      page.renderedContent = '<p>Rendered <strong>body</strong></p>';
+      final site = SiteData(name: 'root', route: '/', children: {
+        'posts': SiteData(name: 'posts', route: '/posts', pages: [child])
+      });
+      final result = await renderer.renderPageWithLayout(
+          page,
+          ConfigModel(
+              title: 'Site title',
+              owner: 'Site owner',
+              metadata: {},
+              atProto:
+                  AtProtoConfig(enabled: true, turnstileSiteKey: 'test-key')),
+          site);
+      final doc = html.parse(result);
+      expect(doc.querySelector('title')!.text, 'Page title - Site title');
+      expect(doc.querySelector('.site-title')!.text, contains('Site title'));
+      expect(doc.querySelector('.site-footer')!.text, contains('Site owner'));
+      expect(
+          doc.querySelector('.site-footer')!.text, matches(RegExp(r'© \d{4}')));
+      if (layout != 'list') expect(result, contains(page.renderedContent));
+      if (layout == 'post') {
+        expect(doc.querySelector('.post-content')!.innerHtml.trim(),
+            page.renderedContent);
+        expect(doc.querySelector('#comments-section'), isNotNull);
+        expect(result, contains('at://did:plc:test/app.bsky.feed.post/test'));
+        expect(result, contains('test-key'));
+      }
+      if (layout != 'default') {
+        expect(doc.querySelector('time')!.text.trim(), 'January 15, 2024');
+        expect(doc.querySelector('time')!.attributes['datetime'], '2024-01-15');
+      }
+    });
+  }
 }

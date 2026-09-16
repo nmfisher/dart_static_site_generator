@@ -1,115 +1,139 @@
-import 'dart:io';
 import 'dart:async';
-import 'package:blog_builder/src/static_site_builder.dart';
-import 'package:path/path.dart' as pathlib;
+import 'dart:io';
 import 'package:args/args.dart';
+import 'package:path/path.dart' as p;
+import 'package:blog_builder/src/static_site_builder.dart';
+import 'package:blog_builder/src/preview_server.dart';
 
-void main(List<String> args) async {
+Future<void> main(List<String> args) async {
   final parser = ArgParser()
     ..addOption('input',
-        abbr: 'i',
-        help:
-            'Input directory containing config.yaml, content/, templates/, assets/',
-        defaultsTo: 'example_blog')
+        abbr: 'i', defaultsTo: 'example_blog', help: 'Site source directory')
     ..addOption('output',
-        abbr: 'o',
-        help: 'Output directory for generated site',
-        defaultsTo: 'build')
+        abbr: 'o', defaultsTo: 'build', help: 'Generated site directory')
     ..addFlag('watch',
         abbr: 'w',
-        help: 'Watch for changes and rebuild automatically',
-        negatable: false)
-    ..addFlag('help',
-        abbr: 'h', help: 'Show usage information', negatable: false);
-
-  ArgResults results;
+        negatable: false,
+        help: 'Rebuild on edits without announcing posts')
+    ..addFlag('serve',
+        negatable: false,
+        help: 'Serve and watch with live reload; disables announcements')
+    ..addFlag('drafts',
+        negatable: false, help: 'Include drafts; disables announcements')
+    ..addFlag('incremental',
+        defaultsTo: true,
+        help: 'Reuse the persistent content/template/image cache')
+    ..addFlag('announce',
+        defaultsTo: true,
+        help: 'Create missing Bluesky anchor posts on production builds')
+    ..addOption('host', defaultsTo: '127.0.0.1')
+    ..addOption('port', defaultsTo: '8080')
+    ..addFlag('help', abbr: 'h', negatable: false);
   try {
-    results = parser.parse(args);
-
-    if (results['help'] as bool) {
-      print('Static Site Generator for Markdown Blogs');
-      print('Usage: dart run bin/blog_builder.dart [options]');
-      print(parser.usage);
-      exit(0);
-    }
-  } catch (e) {
-    print('Error parsing arguments: $e');
-    print(parser.usage);
-    exit(1);
-  }
-
-  final inputDir = results['input'] as String;
-  final outputDir = results['output'] as String;
-  final watchMode = results['watch'] as bool;
-
-  if (!await Directory(inputDir).exists()) {
-    print('Error: Input directory not found: $inputDir');
-    exit(1);
-  }
-
-  final siteBuilder = StaticSiteBuilder(
-    inputDir: inputDir,
-    outputDir: outputDir,
-  );
-
-  // Initial build
-  await buildSite(siteBuilder, outputDir);
-
-  if (watchMode) {
-    print('\n👀 Watching for changes in: $inputDir');
-    print('Press Ctrl+C to stop watching...\n');
-    
-    await watchDirectory(inputDir, () async {
-      print('📝 Changes detected, rebuilding...');
-      await buildSite(siteBuilder, outputDir);
-    });
-  }
-}
-
-Future<void> buildSite(StaticSiteBuilder siteBuilder, String outputDir) async {
-  final stopwatch = Stopwatch()..start();
-  
-  await siteBuilder.build();
-  
-  stopwatch.stop();
-  print('\n✅ Build completed in ${stopwatch.elapsedMilliseconds}ms');
-  print('📁 Output written to: ${pathlib.absolute(outputDir)}');
-  
-  if (siteBuilder.renderErrors > 0 || siteBuilder.parseErrors > 0) {
-    print('---');
-    print('⚠️  Build finished with warnings:');
-    if (siteBuilder.parseErrors > 0) {
-      print('  - ${siteBuilder.parseErrors} file(s) failed to parse.');
-    }
-    if (siteBuilder.renderErrors > 0) {
+    final options = parser.parse(args);
+    if (options['help'] as bool) {
       print(
-          '  - ${siteBuilder.renderErrors} page(s) failed to render or write.');
+          'Usage: dart run bin/blog_builder.dart [build|check] [options]\n${parser.usage}');
+      return;
     }
-    print('---');
-  }
-}
-
-Future<void> watchDirectory(String path, Future<void> Function() onChanged) async {
-  final watcher = Directory(path).watch(recursive: true);
-  Timer? debounceTimer;
-  
-  await for (final event in watcher) {
-    // Skip events for the output directory and hidden files/directories
-    if (event.path.contains('build/') || 
-        event.path.contains('/.') ||
-        event.path.endsWith('.tmp') ||
-        event.path.endsWith('~')) {
-      continue;
-    }
-    
-    // Debounce rapid file changes (common during saves)
-    debounceTimer?.cancel();
-    debounceTimer = Timer(Duration(milliseconds: 500), () async {
-      try {
-        await onChanged();
-      } catch (e) {
-        print('❌ Error during rebuild: $e');
+    final command = options.rest.isEmpty ? 'build' : options.rest.single;
+    if (!['build', 'check'].contains(command))
+      throw ArgumentError('Unknown command: $command');
+    final input = options['input'] as String;
+    final output = options['output'] as String;
+    if (!await Directory(input).exists())
+      throw ArgumentError('Input directory not found: $input');
+    final serve = options['serve'] as bool;
+    final watch = serve || options['watch'] as bool;
+    final drafts = options['drafts'] as bool;
+    if (command == 'check' && watch)
+      throw ArgumentError('check cannot be combined with --serve or --watch');
+    final port = int.tryParse(options['port'] as String);
+    if (port == null || port < 0 || port > 65535)
+      throw ArgumentError('port must be between 0 and 65535');
+    final builder = StaticSiteBuilder(
+        inputDir: input,
+        outputDir: output,
+        preview: watch || drafts,
+        includeDrafts: drafts,
+        incremental: options['incremental'] as bool,
+        announce: options['announce'] as bool);
+    if (command == 'check') {
+      final issues = await builder.check();
+      for (final issue in issues) {
+        stderr.writeln(issue);
       }
+      print(issues.isEmpty
+          ? 'Check passed.'
+          : 'Check failed: ${issues.length} issue(s).');
+      if (issues.isNotEmpty) exitCode = 1;
+      return;
+    }
+    PreviewServer? server;
+    Future<void> rebuild() async {
+      final timer = Stopwatch()..start();
+      await builder.build();
+      server?.basePath = builder.siteConfig.basePath;
+      server?.changed();
+      print(
+          'Build completed in ${timer.elapsedMilliseconds}ms → ${p.absolute(output)}');
+      final cache = builder.cache;
+      print(
+          'Cache hits: ${cache.parsedHits} parsed pages, ${cache.contentHits} content, ${cache.layoutHits} layouts, ${cache.assetHits} assets');
+    }
+
+    try {
+      await rebuild();
+    } catch (error) {
+      stderr.writeln('Build failed: $error');
+      if (!watch) {
+        exitCode = 1;
+        return;
+      }
+    }
+    if (!watch) return;
+    if (serve) {
+      var basePath = '';
+      try {
+        basePath = builder.siteConfig.basePath;
+      } catch (_) {}
+      server = PreviewServer(p.absolute(output), basePath: basePath);
+      await server.start(host: options['host'] as String, port: port);
+      print('Preview: http://${options['host']}:${server.port}$basePath/');
+    }
+    print('Watching ${p.absolute(input)}. Press Ctrl+C to stop.');
+    final queue = RebuildQueue(rebuild, onError: (error) {
+      stderr.writeln('Build failed: $error');
+      server?.failed(error);
     });
+    Timer? debounce;
+    final root = p.absolute(input);
+    final destination = p.absolute(output);
+    final watcher = Directory(input).watch(recursive: true).listen((event) {
+      final absolute = p.absolute(event.path);
+      final relative = p.relative(absolute, from: root);
+      if (p.equals(absolute, destination) ||
+          p.isWithin(destination, absolute) ||
+          p.split(relative).any((part) => part.startsWith('.')) ||
+          relative.endsWith('.tmp') ||
+          relative.endsWith('~')) return;
+      debounce?.cancel();
+      debounce = Timer(const Duration(milliseconds: 200), () {
+        unawaited(queue.request());
+      });
+    });
+    final stopped = Completer<void>();
+    final signal = ProcessSignal.sigint.watch().listen((_) {
+      if (!stopped.isCompleted) stopped.complete();
+    });
+    await stopped.future;
+    debounce?.cancel();
+    await watcher.cancel();
+    await queue.idle;
+    await signal.cancel();
+    await server?.close();
+  } catch (error) {
+    stderr.writeln('Build failed: $error');
+    exitCode = 1;
   }
 }

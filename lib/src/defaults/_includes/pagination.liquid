@@ -1,0 +1,7 @@
+{% if page.pagination.total_pages > 1 %}
+<nav class="pagination" aria-label="Pagination">
+{% if page.pagination.previous %}<a rel="prev" href="{{ page.pagination.previous | relative_url }}">Previous page</a>{% endif %}
+<span>Page {{ page.pagination.page }} of {{ page.pagination.total_pages }}</span>
+{% if page.pagination.next %}<a rel="next" href="{{ page.pagination.next | relative_url }}">Next page</a>{% endif %}
+</nav>
+{% endif %}

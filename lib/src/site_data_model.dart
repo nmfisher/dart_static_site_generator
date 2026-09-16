@@ -2,11 +2,15 @@ import 'package:blog_builder/src/page_models.dart';
 import 'package:path/path.dart' as p;
 
 class SiteData {
+  final Map<String, dynamic> data = {};
+  Map<String, dynamic> Function()? extraData;
   final String name; // Name of the directory/collection/page
   final String route; // Full route of this node
-  PageModel? page; // If this node represents a page (made non-final for assignment)
+  PageModel?
+      page; // If this node represents a page (made non-final for assignment)
   final Map<String, SiteData> children; // Subdirectories/sub-collections
-  final List<PageModel> pages; // Pages directly within this directory/collection
+  final List<PageModel>
+      pages; // Pages directly within this directory/collection
 
   SiteData({
     required this.name,
@@ -37,11 +41,13 @@ class SiteData {
     // Use the last segment of the route as the key, ensuring it's unique
     final Set<String> usedKeys = children.keys.toSet();
     for (final pModel in pages) {
-      String pageKey = p.basenameWithoutExtension(pModel.route);
-      if (pageKey.isEmpty) { // Handle root index page
+      String pageKey = p.posix.basename(pModel.route);
+      if (children[pageKey]?.page?.route == pModel.route) continue;
+      if (pageKey.isEmpty) {
+        // Handle root index page
         pageKey = 'index';
       }
-      
+
       // Ensure uniqueness, append a number if necessary
       int counter = 1;
       String originalPageKey = pageKey;
@@ -50,21 +56,47 @@ class SiteData {
         counter++;
       }
       usedKeys.add(pageKey);
-      map[pageKey] = pModel.toMap();
+      final pageMap = pModel.toMap();
+      map[pageKey] = pageMap;
     }
 
-    // Add a special 'all' list for pages directly under this node, sorted by date
+    // Add a special 'all' list for pages directly under this node, sorted by priority then date
     if (pages.isNotEmpty) {
+      int _parsePriority(dynamic v) {
+        if (v is num) return v.toInt();
+        if (v is String) return int.tryParse(v) ?? 0;
+        return 0;
+      }
+
       final sortedPages = List<PageModel>.from(pages)
         ..sort((a, b) {
-          if (a.date == null && b.date == null) return 0;
+          // Sort by priority (lower = first) if present
+          final aHasPri = a.extras.containsKey('priority');
+          final bHasPri = b.extras.containsKey('priority');
+          if (aHasPri && bHasPri) {
+            final cmp = _parsePriority(a.extras['priority'])
+                .compareTo(_parsePriority(b.extras['priority']));
+            if (cmp != 0) return cmp;
+          } else if (aHasPri) {
+            return -1;
+          } else if (bHasPri) {
+            return 1;
+          }
+          // Fall back to date sorting (newest first)
+          if (a.date == null && b.date == null)
+            return a.route.compareTo(b.route);
           if (a.date == null) return 1;
           if (b.date == null) return -1;
-          return b.date!.compareTo(a.date!); // Newest first
+          return b.date!.compareTo(a.date!);
         });
-      map['all'] = sortedPages.map((p) => p.toMap()).toList();
+      map['all'] = sortedPages.map((p) {
+        final m = p.toMap();
+        return m;
+      }).toList();
     }
 
+    map.addAll(data);
+    map.addAll(extraData?.call() ?? {});
     return map;
   }
 }

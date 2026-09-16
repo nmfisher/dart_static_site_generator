@@ -14,9 +14,7 @@ class TestFileSystem {
     outputDir = fs.path.join('/project', 'output');
     fs.directory(inputDir).createSync(recursive: true);
     fs.directory(p.join(inputDir, 'content')).createSync(recursive: true);
-    fs
-        .directory(p.join(inputDir, 'assets'))
-        .createSync(recursive: true); 
+    fs.directory(p.join(inputDir, 'assets')).createSync(recursive: true);
   }
 
   void createConfigFile(String content) {
@@ -109,7 +107,7 @@ This content should use the default bundled layout.
 ''');
 
       await siteBuilder.build();
-      
+
       final expectedOutputPath = testFs.normalizePath('page/index.html');
       expect(testFs.outputFileExists(expectedOutputPath), isTrue,
           reason: "Output file $expectedOutputPath should exist");
@@ -247,7 +245,7 @@ Render this!
       testFs.createAssetFile('style.css', assetContent);
       testFs.createAssetFile('images/logo.png', [5, 6]);
 
-      await siteBuilder.build(); 
+      await siteBuilder.build();
 
       final outputAssetPath = testFs.normalizePath('assets/style.css');
       final outputImagePath = testFs.normalizePath('assets/images/logo.png');

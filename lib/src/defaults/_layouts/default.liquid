@@ -6,9 +6,10 @@
 
     <title>{% block title %}{{ page.title | default: 'Untitled Page' }}{% endblock %} - {{ site.title | default: 'My Website' }}</title>
 
-    <meta name="description" content="{{ site.metadata.description | escape }}">
+    {% render '_includes/seo.liquid', page: page, site: site %}
 
     <link rel="stylesheet" href="/assets/style.css">
+    <link rel="stylesheet" href="/assets/css/site.css">
 
     {% if site.rss.enabled %}
     <link rel="alternate" type="application/rss+xml" title="{{ site.rss.title | default: site.title | default: 'RSS Feed' }}" href="/{{ site.rss.file_name | default: 'feed.xml' }}">
@@ -23,16 +24,16 @@
 </head>
 <body>
 
-    {% render '_includes/header.liquid' %}
+    {% render '_includes/header.liquid', site: site, page: page %}
 
     <main class="container">
         {% block content %}
             <h1>{{ page.title | default: "Page Title Missing" }}</h1>
-            {{ page.html | default: "<p>Error: No content found for this page.</p>" }}
+            {{ content }}
         {% endblock %}
     </main>
 
-    {% render '_includes/footer.liquid' %}
+    {% render '_includes/footer.liquid', site: site, page: page %}
 
     {% if site.at_proto.enabled %}
     <script src="/assets/js/at_comments.js"></script>
