@@ -1,5 +1,12 @@
 <meta name="description" content="{{ page.seo.description | escape }}">
 <link rel="canonical" href="{{ page.canonical_url | escape }}">
+{% assign alternates = page.extras.alternates %}
+{% if alternates %}
+{% for pair in alternates %}<link rel="alternate" hreflang="{{ pair[0] }}" href="{{ pair[1] | absolute_url | escape }}">
+{% endfor %}
+{% for pair in alternates %}{% if pair[0] == site.i18n.default.code %}<link rel="alternate" hreflang="x-default" href="{{ pair[1] | absolute_url | escape }}">
+{% endif %}{% endfor %}
+{% endif %}
 <meta property="og:title" content="{{ page.seo.title | escape }}">
 <meta property="og:description" content="{{ page.seo.description | escape }}">
 <meta property="og:url" content="{{ page.canonical_url | escape }}">

@@ -193,6 +193,32 @@ browser, ranks title matches first, and supports `/search/?q=your+query`. It exc
 index pages and drafts unless `--drafts` is used. Disable it with
 `search.enabled: false` if you want to supply your own `/search/` page.
 
+## Multi-language sites
+
+Declare a `default_locale` plus a `locales` map in `config.yaml` to build each
+locale as its own rooted site. The default locale stays at the site root; every
+other locale builds under `/<locale>/...` (localized home, search page and
+search index, RSS feed at `/<locale>/feed.xml` with its own `<language>`, and
+collection archives). Translations are matched by identical relative path under
+`content/<locale>/` and cross-linked automatically:
+
+```yaml
+default_locale: en
+locales:
+  en: { name: English }
+  de: { name: Deutsch }
+```
+
+With `content/posts/hello.md` and a German translation in
+`content/de/posts/hello.md`, the builder emits `/posts/hello/` and
+`/de/posts/hello/`, adds hreflang `link rel="alternate"` tags plus an
+`x-default` link to every page, lists both in a single sitemap via
+`xhtml:link` entries, and points each locale's search page at its own
+`/<locale>/search-index.json`. Pages can also set `locale:` in frontmatter
+directly. Build a single locale with `blog_builder build --locale de`
+(default-locale pages are then omitted). Untranslated pages still appear in
+each locale's search index and feed, pointing at the default-locale URL.
+
 ## Incremental builds
 
 The cache lives under `<input>/.blog-cache/v1/`. It stores parsed pages, rendered

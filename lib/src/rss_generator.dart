@@ -14,6 +14,8 @@ class RSSGenerator {
     ConfigModel config, {
     required String outFile,
     FileSystem fileSystem = const LocalFileSystem(),
+    String? language,
+    Object? locales,
   }) async {
     final baseUrl = config.baseUrl;
     if (baseUrl == null || baseUrl.isEmpty) {
@@ -33,6 +35,33 @@ class RSSGenerator {
     // Only include pages with dates (typical for blog posts)
     feedItems = feedItems.where((p) => p.date != null).toList();
 
+    // Per-locale feeds (ticket 001): keep default-locale pages plus any
+    // translations published in this locale; map routes to translations.
+    final i18n = locales is I18nConfig ? locales : null;
+    if (i18n != null && i18n.enabled && language != null) {
+      final locale = i18n.locales.firstWhere((l) => l.code == language);
+      final prefix = i18n.prefix(locale);
+      String mapped(PageModel p) {
+        if (p.locale == language) return p.route;
+        final segments = p.route.split('/')..removeAt(0);
+        final rest = segments.skip(1).where((s) => s.isNotEmpty).toList();
+        final logical = rest.isEmpty ? '/' : '/${rest.join('/')}';
+        return '$prefix${logical == '/' ? '' : logical}';
+      }
+      feedItems = feedItems
+          .where((p) => p.locale == null || p.locale == language)
+          .map((p) => p.locale == language
+              ? p
+              : p.copyWith(
+                  route: mapped(p),
+                  extras: {
+                    ...p.extras,
+                    'alternates': p.extras['alternates'],
+                  }),
+              )
+              .toList();
+    }
+
     // Sort by date (newest first)
     feedItems.sort((a, b) {
       final aDate = a.date ?? DateTime(1970);
@@ -48,7 +77,7 @@ class RSSGenerator {
     }
 
     // Build RSS XML
-    final rss = _buildRssXml(feedItems, config, baseUrl);
+    final rss = _buildRssXml(feedItems, config, baseUrl, language: language);
 
     // Write to file
     try {
@@ -69,8 +98,9 @@ class RSSGenerator {
   static XmlDocument _buildRssXml(
     List<PageModel> items,
     ConfigModel config,
-    String baseUrl,
-  ) {
+    String baseUrl, {
+    String? language,
+  }) {
     // Get feed-level info
     final feedTitle = config.rss.title ?? config.title ?? 'Site Feed';
     final feedDescription = config.rss.description ??
@@ -117,6 +147,8 @@ class RSSGenerator {
         _formatDate(DateTime.now().toUtc()),
       ),
       _createElement('generator', 'Blog Builder'),
+      if (language != null && language.isNotEmpty)
+        _createElement('language', language),
     ]);
 
     // Add items

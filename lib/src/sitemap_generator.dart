@@ -14,7 +14,8 @@ class SitemapGenerator {
             .map((p) => _SitemapEntry(
                 loc: "${host.replaceFirst(RegExp(r'/+$'), '')}${p.route}",
                 lastmod: p.date ?? DateTime.now(), // Use page date or fallback
-                priority: _calculatePriority(p.route)))
+                priority: _calculatePriority(p.route),
+                alternates: p.alternatesMap(host)))
             .toList(),
         outFile,
         fileSystem);
@@ -28,6 +29,8 @@ class SitemapGenerator {
       [
         XmlAttribute(
             XmlName('xmlns'), 'http://www.sitemaps.org/schemas/sitemap/0.9'),
+        XmlAttribute(
+            XmlName('xmlns:xhtml'), 'http://www.w3.org/1999/xhtml'),
         XmlAttribute(
             XmlName('xmlns:xsi'), 'http://www.w3.org/2001/XMLSchema-instance'),
         XmlAttribute(XmlName('xsi:schemaLocation'),
@@ -50,6 +53,12 @@ class SitemapGenerator {
             XmlElement(XmlName('priority'), [], [
               XmlText(entry.priority.toStringAsFixed(1)) // Format priority
             ]),
+            for (final alt in entry.alternates.entries)
+              XmlElement(XmlName('xhtml:link'), [
+                XmlAttribute(XmlName('rel'), 'alternate'),
+                XmlAttribute(XmlName('hreflang'), alt.key),
+                XmlAttribute(XmlName('href'), alt.value),
+              ]),
           ],
         ),
       );
@@ -89,7 +98,11 @@ class _SitemapEntry {
   final String loc;
   final DateTime lastmod;
   final double priority;
+  final Map<String, String> alternates;
 
   _SitemapEntry(
-      {required this.loc, required this.lastmod, required this.priority});
+      {required this.loc,
+      required this.lastmod,
+      required this.priority,
+      this.alternates = const {}});
 }

@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:yaml/yaml.dart';
 import 'package:blog_builder/src/image_processor.dart';
+import 'package:blog_builder/src/i18n.dart';
 
 /// Configuration for RSS feed generation
 class RssConfig {
@@ -131,6 +132,7 @@ class ConfigModel {
       fallbackMetaTags; // If true, use first paragraph/image for meta tags when not specified
   final RssConfig rss; // RSS feed configuration
   final AtProtoConfig atProto; // AT Protocol comment system configuration
+  final I18nConfig i18n; // Per-locale build configuration
 
   ConfigModel({
     this.title,
@@ -148,11 +150,13 @@ class ConfigModel {
     this.fallbackMetaTags = false,
     RssConfig? rss,
     AtProtoConfig? atProto,
+    I18nConfig? i18n,
   })  : basePath = normalizeBasePath(
             basePath ?? (baseUrl == null ? '' : Uri.parse(baseUrl).path)),
         imageOptimization = imageOptimization ?? ImageOptimizationConfig(),
         rss = rss ?? RssConfig(),
-        atProto = atProto ?? AtProtoConfig();
+        atProto = atProto ?? AtProtoConfig(),
+        i18n = i18n ?? I18nConfig.parse();
 
   factory ConfigModel.parse(File configFile) {
     final content = configFile.readAsStringSync();
@@ -223,6 +227,10 @@ class ConfigModel {
       }
     }
 
+    // Parse per-locale build config (ticket 001)
+    final i18nConfig = I18nConfig.parse(
+        locales: cfg['locales'], defaultLocale: cfg['default_locale']);
+
     final pageSize = _positiveInt(
         cfg['pagination']?['page_size'], 10, 'pagination.page_size');
     final collections = <String, CollectionConfig>{};
@@ -267,6 +275,7 @@ class ConfigModel {
       fallbackMetaTags: fallbackMetaTags,
       rss: rssConfig,
       atProto: atProtoConfig,
+      i18n: i18nConfig,
     );
   }
 
@@ -323,6 +332,7 @@ class ConfigModel {
       },
       'rss': rss.toMap(),
       'at_proto': atProto.toMap(),
+      'i18n': i18n.toMap(),
     };
   }
 }

@@ -26,6 +26,7 @@ Future<void> main(List<String> args) async {
     ..addFlag('announce',
         defaultsTo: true,
         help: 'Create missing Bluesky anchor posts on production builds')
+    ..addOption('locale', help: 'Build only the given locale')
     ..addOption('host', defaultsTo: '127.0.0.1')
     ..addOption('port', defaultsTo: '8080')
     ..addFlag('help', abbr: 'h', negatable: false);
@@ -57,7 +58,8 @@ Future<void> main(List<String> args) async {
         preview: watch || drafts,
         includeDrafts: drafts,
         incremental: options['incremental'] as bool,
-        announce: options['announce'] as bool);
+        announce: options['announce'] as bool,
+        localeFilter: options['locale'] as String?);
     if (command == 'check') {
       final issues = await builder.check();
       for (final issue in issues) {

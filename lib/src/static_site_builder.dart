@@ -20,6 +20,8 @@ class StaticSiteBuilder {
   final String inputDir;
   final String outputDir;
   final bool includeDrafts, preview, incremental, announce;
+  /// Optional CLI filter: build only this locale's pages (ticket 001).
+  final String? localeFilter;
   late final BuildCache cache;
   String? _stagingDir;
   String get _destination => _stagingDir ?? outputDir;
@@ -29,6 +31,13 @@ class StaticSiteBuilder {
   Future<void> _pending = Future.value();
   ContentCatalog? _catalog;
   late ConfigModel siteConfig;
+  late I18nConfig i18n;
+  /// Locales receiving generated artifacts (all, or just the CLI filter).
+  List<LocaleConfig> _activeLocales = const [];
+  // logical default-locale route -> locale-code -> localized route
+  final Map<String, Map<String, String>> _alternateIndex = {};
+  // localized route -> logical default-locale route
+  final Map<String, String> _logicalRoutes = {};
   late WebPHtmlProcessor webpProcessor;
   late SiteData siteData; // New field
   Root? _templateRoot;
@@ -49,6 +58,7 @@ class StaticSiteBuilder {
     this.preview = false,
     this.incremental = true,
     this.announce = true,
+    this.localeFilter,
   }) : _injectedRenderer = renderer {
     webpProcessor = WebPHtmlProcessor(fileSystem: fileSystem);
     cache = BuildCache(
@@ -134,6 +144,8 @@ class StaticSiteBuilder {
         ]
       };
       if (reserved.contains(name.toLowerCase()) ||
+          i18n.locales.skip(1).any((l) =>
+              reserved.contains(_localeFeedRoute(l.code).toLowerCase())) ||
           (name.startsWith('assets/') &&
               fileSystem.file(pathlib.join(inputDir, name)).existsSync())) {
         throw FormatException(
@@ -153,7 +165,8 @@ class StaticSiteBuilder {
 
     List<PageModel> pages = await _parseContent();
 
-    if (siteConfig.searchEnabled)
+    if (siteConfig.searchEnabled &&
+        _activeLocales.any((l) => l.code == i18n.defaultLocale.code))
       pages.add(PageModel(
           title: 'Search',
           route: '/search',
@@ -163,6 +176,43 @@ class StaticSiteBuilder {
           rawMarkdown: '',
           layoutId: 'search',
           draft: false));
+
+    // Per-locale builds (ticket 001): localized search pages and homes.
+    if (siteConfig.searchEnabled) {
+      for (final locale in _nonDefaultActive) {
+        final prefix = i18n.prefix(locale);
+        pages.add(PageModel(
+            title: 'Search',
+            route: '${i18n.prefix(locale)}/search',
+            source: 'generated:${i18n.prefix(locale)}/search',
+            blurb: '',
+            metadata: {},
+            rawMarkdown: '',
+            layoutId: 'search',
+            draft: false,
+            locale: locale.code,
+            extras: {
+              'search_index': '$prefix/search-index.json',
+            }));
+      }
+    }
+    if (i18n.enabled && _nonDefaultActive.isNotEmpty && pages.any((p) => p.isIndex && p.route == '/')) {
+      final home = pages.firstWhere((p) => p.isIndex && p.route == '/');
+      for (final locale in _nonDefaultActive) {
+        // A translated index file (content/<locale>/index.md) already owns
+        // this route and wins over the copied default home (ticket 001).
+        if (pages.any((p) =>
+            p.isIndex &&
+            p.locale == locale.code &&
+            p.route == i18n.prefix(locale))) {
+          continue;
+        }
+        pages.add(home.copyWith(
+            route: i18n.prefix(locale),
+            source: 'generated:${i18n.prefix(locale)}',
+            locale: locale.code));
+      }
+    }
     _catalog = ContentCatalog(siteConfig)
       ..collect(pages, pathlib.join(inputDir, 'content'));
     _catalog!.addNavigation(pages);
@@ -170,6 +220,7 @@ class StaticSiteBuilder {
     await _generateIndexPages(
         fileSystem.directory(pathlib.join(inputDir, 'content')), pages);
 
+    _injectAlternates(pages);
     diagnostics.addAll(SiteValidator.routes(pages));
     diagnostics.addAll(SiteValidator.outputs(pages, await _assetInventory()));
     if (diagnostics.isNotEmpty) throw StateError(diagnostics.join('\n'));
@@ -264,6 +315,80 @@ class StaticSiteBuilder {
     }
   }
 
+  // ---- Per-locale build support (ticket 001) -------------------------------
+
+  /// Maps a content file inside `content/<locale>/` onto a translated page:
+  /// same relative path under the default locale, route prefixed with the
+  /// locale code. Mutates [page] in place when the file is localized.
+  PageModel _applyLocale(PageModel page) {
+    if (!i18n.enabled) return page;
+    final contentDir = pathlib.join(inputDir, 'content');
+    final sourceRelative = pathlib
+        .relative(page.source, from: contentDir)
+        .replaceAll(pathlib.separator, '/');
+    final segments = sourceRelative.split('/');
+    final locale = i18n.localeForSegments(segments);
+    if (locale == null) return page;
+    final stem = pathlib.basenameWithoutExtension(page.source);
+    final baseName = stem == 'index' ? '' : stem;
+    final dirSegments = segments.take(segments.length - 1).skip(1).toList();
+    final logicalRoute =
+        '/${[...dirSegments, baseName].where((s) => s.isNotEmpty).join('/')}';
+    final route =
+        '${i18n.prefix(locale)}${logicalRoute == '/' ? '' : logicalRoute}';
+    page = page.copyWith(
+        route: route == page.route ? null : route, locale: locale.code);
+    if (!_logicalRoutes.containsValue(logicalRoute)) {
+      _logicalRoutes[route] = logicalRoute;
+    }
+    return page;
+  }
+
+  /// Attaches `extras['alternates']` (locale code -> route) to every page
+  /// that has at least one translation, templates render these as
+  /// hreflang links (see seo.liquid).
+  void _injectAlternates(List<PageModel> pages) {
+    if (!i18n.enabled) return;
+    for (var i = 0; i < pages.length; i++) {
+      final page = pages[i];
+      if (page.generated || page.extras['alternates'] != null) continue;
+      final logical = page.locale == null
+          ? page.route
+          : (_logicalRoutes[page.route] ?? _logicalRoute(page.route));
+      final variants = _alternateIndex[logical];
+      if (variants == null || variants.length < 2) continue;
+      // Trailing-slash form to match canonical URLs in output.
+      final alternates = {
+        for (final entry in variants.entries)
+          entry.key: entry.value == '/' ? '/' : '${entry.value}/',
+      };
+      pages[i] =
+          page.copyWith(extras: {...page.extras, 'alternates': alternates});
+    }
+  }
+
+  /// Records [page] in the alternate-language index, keyed by the logical
+  /// default-locale route. Non-locale files own their route directly.
+  void _registerAlternates(PageModel page) {
+    if (!i18n.enabled || page.draft) return;
+    final logical = page.locale == null
+        ? page.route
+        : (_logicalRoutes[page.route] ??
+            _logicalRoute(page.route));
+    if (page.locale == null && logical != page.route) return;
+    _alternateIndex
+        .putIfAbsent(logical, () => {})[page.locale ?? i18n.defaultLocale.code] =
+        page.route;
+  }
+
+  /// Strips the locale prefix from a localized route.
+  String _logicalRoute(String route) {
+    final segments = route.split('/')..removeAt(0);
+    if (i18n.localeForSegments(segments) == null) return route;
+    final rest = segments.skip(1).where((s) => s.isNotEmpty).toList();
+    return rest.isEmpty ? '/' : '/${rest.join('/')}';
+  }
+
   String _outputPath(String relativePath) {
     if (relativePath.isEmpty ||
         relativePath.contains('\\') ||
@@ -294,7 +419,17 @@ class StaticSiteBuilder {
     try {
       siteConfig = ConfigModel.parse(configFile);
       print('Config loaded successfully (Title: ${siteConfig.title ?? 'N/A'})');
+      i18n = siteConfig.i18n;
+      if (localeFilter != null &&
+          !i18n.locales.any((l) => l.code == localeFilter)) {
+        throw ArgumentError(
+            'Unknown locale "$localeFilter"; configured: ${i18n.locales.map((l) => l.code).join(', ')}');
+      }
+      _activeLocales = localeFilter == null
+          ? i18n.locales
+          : i18n.locales.where((l) => l.code == localeFilter).toList();
     } catch (e) {
+      if (e is ArgumentError) rethrow;
       throw Exception('Failed to parse config.yaml : $e');
     }
   }
@@ -422,6 +557,12 @@ class StaticSiteBuilder {
             pageModel = pageModel.copyWith(layoutId: collection.layout);
           }
         }
+        pageModel = _applyLocale(pageModel);
+        if (localeFilter != null &&
+            (pageModel.locale ?? i18n.defaultLocale.code) != localeFilter) {
+          print('  -> Skipping non-$localeFilter page: ${pageModel.route}');
+          continue;
+        }
         _outputPath(pageModel.route == '/'
             ? 'index.html'
             : '${pageModel.route.substring(1)}/index.html');
@@ -429,6 +570,7 @@ class StaticSiteBuilder {
           print('  -> Skipping draft page: ${pageModel.route}');
         } else {
           pages.add(pageModel);
+          _registerAlternates(pageModel);
           print('  -> Parsed successfully: ${pageModel.route}');
         }
       } catch (e) {
@@ -455,6 +597,12 @@ class StaticSiteBuilder {
     final Set<String> generatedIndexRoutes = {};
     for (final page in pages) {
       // Identify manually created index pages (index.md or route: /)
+      if (i18n.enabled && page.isIndex && page.locale != null) {
+        final prefix = i18n.prefix(i18n.locales
+            .firstWhere((l) => l.code.toLowerCase() == page.locale!.toLowerCase()));
+        generatedIndexRoutes
+            .add(prefix.isEmpty ? '/' : prefix);
+      }
       if (page.isIndex ||
           page.route == '/' ||
           pathlib.basenameWithoutExtension(page.source).toLowerCase() ==
@@ -490,6 +638,19 @@ class StaticSiteBuilder {
           '/${relativeDirPath == '.' ? '' : relativeDirPath.replaceAll(pathlib.separator, '/')}';
 
       // Skip if an index page for this route already exists (manual or previously generated)
+      if (i18n.enabled) {
+        final locale =
+            i18n.localeForSegments(relativeDirPath.split(pathlib.separator));
+        if (locale != null) {
+          final prefix = i18n.prefix(locale);
+          if (generatedIndexRoutes.contains(prefix) ||
+              (prefix.isNotEmpty && generatedIndexRoutes.contains('/'))) {
+            print(
+                '  -> Suppressing generated index for locale directory: $routePath');
+            continue;
+          }
+        }
+      }
       if (generatedIndexRoutes.contains(routePath)) {
         continue;
       }
@@ -503,6 +664,9 @@ class StaticSiteBuilder {
 
       // Generate an index only if there are child pages in this specific directory
       if (routePath == '/' && dirPages.isEmpty) {
+        if (!_activeLocales.any((l) => l.code == i18n.defaultLocale.code)) {
+          continue;
+        }
         dirPages.addAll(pages.where((p) => !p.isIndex && !p.generated));
       }
       if (dirPages.isNotEmpty || routePath == '/') {
@@ -919,6 +1083,8 @@ class StaticSiteBuilder {
     }
   }
 
+  String _localeFeedRoute(String code) => '/$code/${siteConfig.rss.fileName}';
+
   Future<void> _generateRSSFeed(List<PageModel> pages) async {
     print('\nGenerating RSS feed...');
     final rssFile = _outputPath(siteConfig.rss.fileName);
@@ -928,7 +1094,20 @@ class StaticSiteBuilder {
         siteConfig,
         outFile: rssFile,
         fileSystem: fileSystem,
+        language: i18n.defaultLocale.code,
+        // Filter translated pages out of the default feed.
+        locales: i18n.enabled ? i18n : null,
       );
+      for (final locale in _nonDefaultActive) {
+        await RSSGenerator.generateFromPageModels(
+          pages,
+          siteConfig,
+          outFile: _outputPath(_localeFeedRoute(locale.code).substring(1)),
+          fileSystem: fileSystem,
+          language: locale.code,
+          locales: i18n,
+        );
+      }
     } catch (e) {
       // Error message handled inside RSSGenerator, just re-log here if needed
       print('Error occurred during RSS generation step: $e');
@@ -962,6 +1141,7 @@ class StaticSiteBuilder {
         'draft': page.draft,
         'isIndex': page.isIndex,
         'atUri': page.atUri,
+        'locale': page.locale,
         'extras': page.extras,
       });
     return page;
@@ -1063,9 +1243,24 @@ class StaticSiteBuilder {
     if (siteConfig.atProto.enabled)
       paths
           .addAll(['/assets/js/at_comments.js', '/assets/css/at_comments.css']);
+    if (_activeLocales.any((l) => l.code == i18n.defaultLocale.code)) {
+      paths.add('/');
+    }
+    if (siteConfig.searchEnabled) {
+      for (final locale in _nonDefaultActive) {
+        paths.add('${i18n.prefix(locale)}/');
+        paths.add('${i18n.prefix(locale)}/search/');
+      }
+    }
     if (siteConfig.baseUrl?.isNotEmpty == true) {
       paths.add('/sitemap.xml');
-      if (siteConfig.rss.enabled) paths.add('/${siteConfig.rss.fileName}');
+      if (siteConfig.rss.enabled &&
+          _activeLocales.any((l) => l.code == i18n.defaultLocale.code)) {
+        paths.add('/${siteConfig.rss.fileName}');
+      }
+      for (final locale in _nonDefaultActive) {
+        if (siteConfig.rss.enabled) paths.add(_localeFeedRoute(locale.code));
+      }
     }
     final assets = fileSystem.directory(pathlib.join(inputDir, 'assets'));
     if (await assets.exists()) {
@@ -1089,7 +1284,11 @@ class StaticSiteBuilder {
     if (!siteConfig.searchEnabled) return;
     final urls = SiteUrls(siteConfig);
     final records = pages
-        .where((p) => !p.generated && !p.isIndex && (!p.draft || includeDrafts))
+        .where((p) =>
+            !p.generated &&
+            !p.isIndex &&
+            (!p.draft || includeDrafts) &&
+            p.locale == null)
         .map((page) => {
               'title': page.title,
               'url': urls.relative('${page.route}/'),
@@ -1100,6 +1299,54 @@ class StaticSiteBuilder {
     await fileSystem
         .file(_outputPath('search-index.json'))
         .writeAsString(jsonEncode(records));
+    for (final locale in _nonDefaultActive) {
+      final prefix = i18n.prefix(locale);
+      final localized = pages
+          .where((p) =>
+              !p.generated &&
+              !p.isIndex &&
+              (!p.draft || includeDrafts) &&
+              p.locale != locale.code &&
+              !p.route.startsWith('$prefix/'))
+          .map((page) => {
+                'title': page.title,
+                'url': urls.relative('${_alternateRoute(page, prefix)}'),
+                'text': plainContent(page.renderedContent ?? ''),
+                'tags': page.extras['tags'] ?? [],
+              })
+          .toList()
+        ..addAll(pages
+            .where((p) =>
+                !p.generated &&
+                !p.isIndex &&
+                (!p.draft || includeDrafts) &&
+                p.locale == locale.code)
+            .map((page) => {
+                  'title': page.title,
+                  'url': urls.relative('${page.route}/'),
+                  'text': plainContent(page.renderedContent ?? ''),
+                  'tags': page.extras['tags'] ?? [],
+                }));
+      await fileSystem
+          .file(_outputPath('${prefix.substring(1)}/search-index.json'))
+          .writeAsString(jsonEncode(localized));
+    }
+  }
+
+  /// Active locales outside the default one (empty when i18n is off).
+  List<LocaleConfig> get _nonDefaultActive => _activeLocales
+      .where((l) => l.code != i18n.defaultLocale.code)
+      .toList();
+
+  /// Route of [page] as seen from [prefix]'s locale: translated variant
+  /// when one exists, otherwise the default-locale page.
+  String _alternateRoute(PageModel page, String prefix) {
+    final code = prefix.substring(1);
+    final logical =
+        page.locale == null ? page.route : _logicalRoute(page.route);
+    final index = _alternateIndex[logical];
+    if (index == null) return page.route;
+    return index[code] ?? page.route;
   }
 
   // Builds a hierarchical SiteData object from a flat list of PageModels

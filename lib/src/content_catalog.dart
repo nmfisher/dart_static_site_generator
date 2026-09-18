@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'config_models.dart';
+import 'i18n.dart';
 import 'page_models.dart';
 import 'markdown_features.dart';
 
@@ -9,7 +10,9 @@ class ContentCatalog {
       tags = {},
       categories = {};
   final ConfigModel config;
-  ContentCatalog(this.config);
+  final I18nConfig i18n;
+  ContentCatalog(this.config, {I18nConfig? i18n})
+      : i18n = i18n ?? config.i18n;
 
   void collect(List<PageModel> pages, String contentDir) {
     for (final entry in config.collections.entries) {
@@ -27,6 +30,14 @@ class ContentCatalog {
           (matches.isNotEmpty
               ? matches.first.name
               : (source.contains('/') ? source.split('/').first : 'pages'));
+      if (page.locale != null) {
+        // Translated pages only join per-locale buckets (`<name>@<locale>`),
+        // paginated under /<locale>/... by archives().
+        collections
+            .putIfAbsent('$name@${page.locale}', () => [])
+            .add(page);
+        continue;
+      }
       collections.putIfAbsent(name, () => []).add(page);
       for (final target in [
         MapEntry('tags', tags),
@@ -121,6 +132,15 @@ class ContentCatalog {
       paginate('/${entry.value.path}', entry.value.title,
           collections[entry.key] ?? [], entry.value.pageSize,
           allowManual: true);
+      // Per-locale archives (ticket 001): paginate the translated pages
+      // of each non-default locale under /<locale>/<collection path>/...
+      for (final locale in i18n.locales.skip(1)) {
+        final translated =
+            collections['${entry.key}@${locale.code}'] ?? const <PageModel>[];
+        if (translated.isEmpty) continue;
+        paginate('${i18n.prefix(locale)}/${entry.value.path}',
+            entry.value.title, translated, entry.value.pageSize);
+      }
     }
     for (final target in [
       MapEntry('tags', tags),
@@ -183,13 +203,14 @@ class ContentCatalog {
   Map<String, dynamic> toMap() => {
         'collections': {
           for (final entry in collections.entries)
-            entry.key: {
+            if (!entry.key.contains('@'))
+              entry.key: {
               'name': entry.key,
               'title': config.collections[entry.key]?.title ?? entry.key,
               'route': '/${config.collections[entry.key]?.path ?? entry.key}',
               'all': entry.value.map((p) => p.toMap()).toList(),
-              'count': entry.value.length
-            }
+                'count': entry.value.length
+              }
         },
         'tags': {
           for (final entry in tags.entries)

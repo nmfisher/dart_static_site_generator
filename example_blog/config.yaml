@@ -28,6 +28,16 @@ meta:
 # they will be automatically extracted from the first paragraph/image in the post content
 fallback_meta_tags: true
 
+# Per-locale builds (ticket 001)
+# The default locale is served from the site root; every other locale gets
+# its own rooted site under /<locale>/... Translations live in
+# content/<locale>/<same-path>, e.g. content/de/posts/hello.md translates
+# content/posts/hello.md. Pages are cross-linked with hreflang alternates.
+# default_locale: en
+# locales:
+#   en: { name: English }
+#   de: { name: Deutsch }
+
 # Image Optimization Settings
 image_optimization:
   enabled: true

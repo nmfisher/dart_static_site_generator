@@ -1,7 +1,7 @@
 {% layout '_layouts/default.liquid' %}
 {% block content %}
 <h1>Search</h1>
-<form id="site-search" role="search" data-index="{{ '/search-index.json' | relative_url }}">
+<form id="site-search" role="search" data-index="{{ page.search_index | default: '/search-index.json' | relative_url }}">
 <label for="search-query">Search this site</label>
 <input id="search-query" name="q" type="search" autocomplete="off">
 <button type="submit">Search</button>

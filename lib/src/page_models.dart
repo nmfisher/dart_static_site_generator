@@ -19,6 +19,7 @@ class PageModel {
   final bool draft;
   final bool isIndex; // Is this an auto-generated index page?
   final String? atUri; // AT Protocol URI for comment thread
+  final String? locale; // Locale code this page variant belongs to (ticket 001)
   final Map<String, dynamic> extras; // Arbitrary frontmatter fields
   String? renderedContent;
   String tableOfContents = '';
@@ -38,6 +39,7 @@ class PageModel {
       this.date,
       this.isIndex = false,
       this.atUri,
+      this.locale,
       this.extras = const {}}) {
     if (route.isEmpty && !isIndex) {
       throw ArgumentError.value(
@@ -197,6 +199,7 @@ class PageModel {
     print("Parsed ${file.path} -> route: $route");
 
     final atUri = doc["at_uri"]?.toString();
+    final locale = doc["locale"]?.toString();
 
     // Capture arbitrary frontmatter fields not handled above
     final knownKeys = {
@@ -208,7 +211,8 @@ class PageModel {
       'url',
       'route',
       'published',
-      'at_uri'
+      'at_uri',
+      'locale'
     };
     final extras = <String, dynamic>{};
     for (final key in doc.keys) {
@@ -245,6 +249,7 @@ class PageModel {
         isIndex: route == '/' ||
             p.basenameWithoutExtension(filePath).toLowerCase() == 'index',
         atUri: atUri,
+        locale: locale,
         extras: extras);
   }
 
@@ -317,6 +322,7 @@ class PageModel {
       templateId: data['templateId'],
       isIndex: data['isIndex'] ?? false,
       atUri: data['atUri'],
+      locale: data['locale'],
       extras: Map<String, dynamic>.from(data['extras'] ?? {}),
     );
   }
@@ -343,6 +349,8 @@ class PageModel {
       'toc': tableOfContents,
       'headings': headings,
       'at_uri': atUri,
+      'locale': locale,
+      'extras': extras,
     };
     // Merge arbitrary frontmatter so templates can access e.g. {{ page.sku }}
     map.addAll(extras);
@@ -350,6 +358,18 @@ class PageModel {
   }
 
   /// Create a copy of this PageModel with specified fields replaced
+  /// Absolute alternate-language URLs for the sitemap, derived from
+  /// `extras['alternates']` (locale code -> route) written by the builder.
+  Map<String, String> alternatesMap(String host) {
+    final raw = extras['alternates'];
+    if (raw is! Map || raw.isEmpty) return const {};
+    final base = host.replaceFirst(RegExp(r'/+$'), '');
+    return {
+      for (final entry in raw.entries)
+        entry.key.toString(): '$base${entry.value}',
+    };
+  }
+
   PageModel copyWith({
     String? layoutId,
     String? templateId,
@@ -363,6 +383,7 @@ class PageModel {
     bool? draft,
     bool? isIndex,
     String? atUri,
+    String? locale,
     String? renderedContent,
     Map<String, dynamic>? extras,
   }) {
@@ -379,6 +400,7 @@ class PageModel {
       draft: draft ?? this.draft,
       isIndex: isIndex ?? this.isIndex,
       atUri: atUri ?? this.atUri,
+      locale: locale ?? this.locale,
       extras: extras ?? this.extras,
     )..renderedContent = renderedContent ?? this.renderedContent;
   }
@@ -458,6 +480,7 @@ class PageIndexPageModel extends PageModel {
       super.isIndex = true,
       super.date,
       super.atUri,
+      super.locale,
       super.extras});
 
   @override
@@ -504,6 +527,7 @@ class PageIndexPageModel extends PageModel {
       templateId: data['templateId'],
       date: data['date'],
       atUri: data['atUri'],
+      locale: data['locale'],
     );
   }
 }
