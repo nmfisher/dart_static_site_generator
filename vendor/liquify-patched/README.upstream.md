@@ -34,12 +34,19 @@ upstream workspace) — two complementary changes:
 
 ## Upstream PR status
 
-The same diff is intended for a PR to kingwill101/liquify. Status:
-**not yet filed**.
+The same diff is intended for a PR to kingwill101/liquify. It currently
+lives on the `fix/variable-key-bracket-access` branch of
+https://github.com/nmfisher/liquify
+([PR #1](https://github.com/nmfisher/liquify/pull/1) opens it against that
+repo's master; the same branch can be pointed at kingwill101/liquify in a
+follow-up PR). The branch adds regression tests to
+`pkgs/liquify/test/issues_test.dart` on top of the fix; the `.patch` file
+here includes those tests.
 
 ## Verification at vendor time
 
-- liquify's own suite (vendored + patched): **740 passed / 0 failed**.
+- liquify's own suite (vendored + patched): **743 passed / 0 failed**
+  (740 upstream + 3 new regression tests in `test/issues_test.dart`).
 - blog_builder suite: 145 passed / 0 failed (6 of them in
   `test/liquify_repro_test.dart` covering bracket access).
 - `dart analyze`: clean on both packages.
