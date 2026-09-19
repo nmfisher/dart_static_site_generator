@@ -1,0 +1,75 @@
+diff --git a/pkgs/liquify/lib/src/evaluator/evaluator.dart b/pkgs/liquify/lib/src/evaluator/evaluator.dart
+index 3a01d8c..cd28bc9 100644
+--- a/pkgs/liquify/lib/src/evaluator/evaluator.dart
++++ b/pkgs/liquify/lib/src/evaluator/evaluator.dart
+@@ -287,18 +287,22 @@ class Evaluator implements ASTVisitor<dynamic> {
+ 
+       if (isArray) {
+         final key = (member.array as Identifier).name;
+-        final index = (member.key as Literal).value;
+         objectVal = objectVal[key];
+ 
+-        if (objectVal == null) return;
++        if (objectVal == null) return null;
++        // The key may be any expression (e.g. hash[var.field]); evaluate it.
++        final keyValue = member.key.accept(this);
+         if (objectVal is List) {
+-          if (index >= 0 && index < objectVal.length) {
+-            objectVal = objectVal[index];
+-          } else {
++          final index = keyValue is int ? keyValue : int.tryParse('$keyValue');
++          if (index == null || index < 0 || index >= objectVal.length) {
+             return null;
+           }
+-        } else {
+           objectVal = objectVal[index];
++        } else if (objectVal is Map) {
++          if (!objectVal.containsKey(keyValue)) return null;
++          objectVal = objectVal[keyValue];
++        } else {
++          return null;
+         }
+       } else if (objectVal is Drop) {
+         if (member is Identifier) {
+@@ -498,18 +502,22 @@ class Evaluator implements ASTVisitor<dynamic> {
+ 
+       if (isArray) {
+         final key = (member.array as Identifier).name;
+-        final index = (member.key as Literal).value;
+         objectVal = objectVal[key];
+ 
+-        if (objectVal == null) return;
++        if (objectVal == null) return null;
++        // The key may be any expression (e.g. hash[var.field]); evaluate it.
++        final keyValue = await member.key.acceptAsync(this);
+         if (objectVal is List) {
+-          if (index >= 0 && index < objectVal.length) {
+-            objectVal = objectVal[index];
+-          } else {
++          final index = keyValue is int ? keyValue : int.tryParse('$keyValue');
++          if (index == null || index < 0 || index >= objectVal.length) {
+             return null;
+           }
+-        } else {
+           objectVal = objectVal[index];
++        } else if (objectVal is Map) {
++          if (!objectVal.containsKey(keyValue)) return null;
++          objectVal = objectVal[keyValue];
++        } else {
++          return null;
+         }
+       } else if (objectVal is Drop) {
+         if (member is Identifier) {
+diff --git a/pkgs/liquify/lib/src/grammar/shared.dart b/pkgs/liquify/lib/src/grammar/shared.dart
+index 11cc3bb..3f5806a 100644
+--- a/pkgs/liquify/lib/src/grammar/shared.dart
++++ b/pkgs/liquify/lib/src/grammar/shared.dart
+@@ -634,7 +634,7 @@ Parser memberAccess() {
+ }
+ 
+ Parser arrayAccess() =>
+-    seq4(ref0(identifier), char('['), ref0(literal), char(']'))
++    seq4(ref0(identifier), char('['), ref0(expression), char(']'))
+         .map((array) {
+           return ArrayAccess(array.$1, array.$3);
+         })

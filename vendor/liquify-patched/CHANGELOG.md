@@ -1,0 +1,241 @@
+## 1.6.1
+- fix topic typo
+
+## 1.6.0
+
+### Browser Support
+- **Make the package usable from browser builds** - Split the filesystem exports so `webdev`/browser entrypoints no longer pull in `dart:io`, allowing the package to be used more freely in the browser and in the playground.
+
+### Bug Fixes
+- **Switch date filter strftime formatting to d4_time_format** - Replaced custom `_applyStrftime()` converter with `d4_time_format` package for standard strftime specifiers. Custom `%P`, `%:z`, `%Z` (timezone name), and `%q` (ordinal suffix) specifiers are preserved via a small shim.
+
+## 1.5.1
+
+### Bug Fixes
+- **Fix keyword word boundary parsing** - Keywords `empty`, `true`, `false`, and `nil` no longer incorrectly match prefixes of identifiers (e.g., `empty_title`, `true_value`, `false_flag`, `nil_check` now correctly parse as identifiers)
+
+## 1.5.0
+
+### New Features
+- **Custom delimiters support** - Configure alternative template delimiters via `LiquidConfig`
+  - Use ERB-style (`<% %>`, `<%= %>`), bracket-style (`[% %]`, `[[ ]]`), or any custom delimiters
+  - Built-in presets: `LiquidConfig.erb` for ERB-style templates
+  - Custom tags automatically support configured delimiters via `createTagStart()`, `createTagEnd()`, etc.
+  - Parser caching ensures performance is not impacted when using multiple configurations
+
+### Performance Improvements
+- **92-95% reduction in parser activations** through comprehensive optimization:
+  - Lookahead-based element routing (skips tag parsers for plain text)
+  - Precedence-based expression parser (eliminates repeated prefix parsing)
+  - Pattern-based text(), identifier(), and memberAccess() parsers
+  - First-character routing in primaryTerm() (skips impossible alternatives)
+
+### Breaking Changes
+- **Custom tags using `{{ }}` syntax must now explicitly declare their delimiter type**
+  
+  If you have a custom tag that uses variable-style delimiters (`{{ mytag }}`), you must now override `delimiterType`:
+  
+  ```dart
+  class MyCustomTag with CustomTagParser {
+    @override
+    TagDelimiterType get delimiterType => TagDelimiterType.variable;
+    
+    @override
+    Parser parser() {
+      // ... your parser implementation
+    }
+  }
+  ```
+  
+  Custom tags using standard `{% %}` syntax (the default) require no changes.
+
+### Internal Changes
+- Add `TagDelimiterType` enum to distinguish custom tag delimiter styles
+- Optimize parser routing based on delimiter lookahead
+
+## 1.4.2
+ - Bump dependencies
+
+## 1.4.1
+Fix: Add better handling of filtered assignments
+
+
+## 1.4.0
+
+### Liquid tag improvements
+- Treat each non-empty line in `{% liquid %}` blocks as a statement
+- Ignore whitespace-only lines inside `{% liquid %}` blocks
+- Error on CR-only line endings in `{% liquid %}` blocks for consistent parsing behavior
+- Route `{% liquid %}` output through the active buffer (works correctly inside captures)
+
+### Output and scope semantics
+- Preserve value types for single-expression tag content so numeric filters (e.g., `times`) behave correctly
+- `assign` inside `for` loops now persists after the loop while keeping `forloop` and loop variables local
+
+### Tests
+- Add `{% liquid %}` shorthand syntax and whitespace handling tests
+- Add capture regression coverage for `{% liquid %}` output routing
+
+## 1.3.1
+- Fix string literal parsing to correctly handle escaped quotes and characters
+- Add regression tests covering render tag and evaluator behaviour with escaped strings
+
+## 1.3.0
+- Correctly check for elsif tags and not elseif
+- tablerow - use seperate buffer for each row being rendered
+- refactor parsers for if/case/for to better capture content in else branches etc
+
+
+## 1.2.0
+
+### 🔒 Environment-Scoped Registry
+- Add environment-scoped filter and tag registration
+- Add strict mode for security sandboxing
+- Add `Environment.withStrictMode()` constructor
+- Add Template API support for custom environments
+- Add environment cloning with local registrations
+
+### 🔧 Parser Improvements
+- Fix operators to prevent invalid matches with adjacent words
+- Enhance comparison, logical, and unary operator parsing
+- Improve operator precedence handling
+
+### 🏷️ Render Tag Fixes
+- Fix variable scope isolation in render tags
+- Prevent variable leakage to parent scope
+- Add comprehensive scope isolation tests
+
+### 📚 Documentation
+- Add environment-scoped registry documentation
+
+
+## 1.1.0
+
+### 📚 Documentation
+- **Complete documentation overhaul**: Added comprehensive documentation system
+- **Examples documentation**: Added 5 detailed example guides covering basic usage, layouts, custom tags, drop objects, and file system integration
+- **Tags documentation**: Complete reference for all 21 tags with usage patterns and examples
+- **Filters documentation**: Comprehensive documentation for 68+ filters across 7 categories (array, string, math, date, HTML, URL, misc)
+- **API documentation**: Structured documentation hub with cross-references and navigation
+
+### 🧮 Filters
+- **NEW**: Add `parse_json` filter for parsing JSON strings into Dart objects
+- **Enhancement**: Math filters now handle null values gracefully (null treated as 0, prevents runtime type cast errors)
+- **Enhancement**: Complete expression-based filters (where_exp, find_exp, group_by_exp, etc.) with proper Liquid expression evaluation
+- **Enhancement**: Add missing array manipulation filters: compact, concat, push, pop, shift, unshift, reject, sum, sort_natural, group_by, has
+- **Fix**: Filter arguments now support member access expressions (e.g., `append: features.size`)
+
+### 🏗️ Core Improvements
+- **Fix**: Boolean literal parsing in comparison operations (true/false now parsed as literals instead of identifiers)
+- **Enhancement**: FileSystemRoot and MapRoot now have extensions and throwOnError support
+- **Complete**: 100% filter test coverage with comprehensive regression tests
+
+### 🏷️ Tags
+- **NEW**: comment
+- **NEW**: doc
+
+### 🧪 Testing
+- Complete test coverage for all implemented filters
+- Add regression tests for boolean literal parsing
+- Enhanced render tag tests
+
+## 1.0.4
+- Fix FileSystemRoot to handle null fileSystem argument safely and consistently fallback to LocalFileSystem
+- Add tests for FileSystemRoot null fileSystem behavior
+
+## 1.0.3
+- Fix contains operator
+
+## 1.0.2
+- allow iterating over key value pairs in for tags
+
+## 1.0.1
+- Disable internal resolver/analyzer logging
+
+## 1.0.0
+- Layout tag support
+- Async rendering support
+
+## 1.0.0-dev.2
+- **Template Enhancements:**
+  - Added layout tag support with title filter.
+  - Implemented template analyzer and resolver.
+
+- **Analyzer Improvements:**
+  - Initial support for a static analyzer.
+  - Extensive testing and improvements in static analysis.
+  - Enhanced resolver and analyzer integration.
+
+- **Filter Enhancements:**
+  - Enabled dot notation for array filters.
+
+## 1.0.0-dev.1
+- layout tag support
+
+## 0.8.2
+- Make sure we register all the missing string filters
+
+## 0.8.1
+- support elseif tags
+
+## 0.8.0
+- Start throwing exceptions when parsing fails
+
+## 0.7.4
+- For tag: make sure iterable is not null before assignment
+
+## 0.7.3
+- Truthy support for binary operators
+
+ ## 0.7.2
+- Array support
+
+## 0.7.1
+- array support
+
+## 0.7.0
+- Fix parse failure for single { character
+- Better whitespace control handling
+- Optional tracing and linting
+
+## 0.6.6
+
+- Allow identifiers with hyphens
+
+## 0.6.5
+
+- Member access fix
+
+## 0.6.3
+
+- Filtered assignment fix
+
+## 0.6.2
+
+- Group filters into modules
+
+## 0.6.0
+
+- Empty type
+- MapRoot Root implementation
+
+## 0.5.0
+
+- Filesystem lookup
+- Render tag
+
+## 0.4.0
+
+- Drop support
+
+## 0.3.0
+
+- Support floating point numbers
+- Support negative numbers
+
+## 0.2.0
+
+- Add built in filters
+## 0.1.0
+
+- Initial version.

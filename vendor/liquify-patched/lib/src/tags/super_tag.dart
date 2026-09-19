@@ -1,0 +1,30 @@
+import 'package:liquify/parser.dart';
+
+/// A tag that represents a call to the parent block's content.
+/// The super content is now handled by the analyzer and resolver.
+class SuperTag extends AbstractTag with CustomTagParser {
+  SuperTag(super.content, super.filters);
+
+  @override
+  dynamic evaluateContent(Evaluator evaluator) {
+    // Super content is now handled by the analyzer and resolver
+    // This tag is only used for parsing and AST construction
+    return '';
+  }
+
+  @override
+  TagDelimiterType get delimiterType => TagDelimiterType.variable;
+
+  @override
+  Parser parser([LiquidConfig? config]) {
+    // This matches syntax: {{ super() }} or custom delimiters like [[ super() ]]
+    return (createVarStart(config) &
+            string('super').trim() &
+            char('(').trim() &
+            char(')').trim() &
+            createVarEnd(config))
+        .map((_) {
+          return Tag('super', []);
+        });
+  }
+}

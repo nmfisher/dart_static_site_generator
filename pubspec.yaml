@@ -24,6 +24,15 @@ dependencies:
   liquify: ^1.6.1
   file: ^7.0.0
 
+# Vendored liquify with variable/expression keys in bracket access
+# (Shopify Liquid allows `hash[expr]`; 1.6.1 only parses literal keys).
+# Pending upstream PR; remove once a release includes it.
+# See vendor/liquify-patched/README.upstream.md and
+# vendor/liquify-patched/variable-key-bracket-access.patch
+dependency_overrides:
+  liquify:
+    path: vendor/liquify-patched
+
 dev_dependencies:
   lints: ^2.1.0
   test: ^1.24.0

@@ -57,18 +57,38 @@ void main() {
     expect(out, 'oD');
   });
 
-  test('bracket access with variable key is unsupported (ParsingException)',
-      () {
-    // Shopify Liquid resolves the key expression ('/en-route'); liquify
-    // 1.6.1 fails at parse time. seo.liquid avoids this construct.
-    // Note: liquify has two ParsingException classes and only the
-    // non-throwing one is exported, so assert on the message, not the type.
-    expectLater(
-        () => raw('{{ alternates[site.i18n.default.code] }}',
-            data({'en': '/en-route'})),
-        throwsA(isA<Exception>()
-            .having((e) => e.toString(), 'message',
-                contains('ParsingException'))
-            .having((e) => e.toString(), 'detail', contains('expected'))));
+  test('bracket access with variable key', () {
+    // Shopify Liquid: "For hashes, the key must be a literal quoted string
+    // or an expression that resolves to a string." liquify 1.6.1 only
+    // parsed literal keys; the vendored patch (vendor/liquify) widens the
+    // grammar to ref0(expression) and evaluates the key in member chains.
+    // Pending upstream PR.
+    final out = raw(
+        '{% assign t = page.extras.alternates %}'
+        '{{ t[site.i18n.default.code] }}',
+        data({'en': '/en-route'}));
+    expect(out, '/en-route');
+  });
+
+  test('bracket access with nested expressions', () {
+    // The widened grammar composes: expression keys, including lookups on
+    // the result of another lookup.
+    final out = Template.parse('{{ a[b.k] }}', data: {
+      'a': {'x': 'deep'},
+      'b': {'k': 'x'},
+    }).render();
+    expect(out, 'deep');
+  });
+
+  test('member chain ending in expression key', () {
+    // x.y[key] — the chain form that needed evaluator support, not just
+    // grammar.
+    final out = Template.parse('{{ wrap.list[i] }}', data: {
+      'wrap': {
+        'list': [10, 20, 30],
+      },
+      'i': 1,
+    }).render();
+    expect(out, '20');
   });
 }

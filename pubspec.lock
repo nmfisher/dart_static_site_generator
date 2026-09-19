@@ -364,10 +364,9 @@ packages:
   liquify:
     dependency: "direct main"
     description:
-      name: liquify
-      sha256: "89228cfb5a269158d67253451b113ce4d110ce4e094955e95684bd89a99af0a7"
-      url: "https://pub.dev"
-    source: hosted
+      path: "vendor/liquify-patched"
+      relative: true
+    source: path
     version: "1.6.1"
   logging:
     dependency: transitive

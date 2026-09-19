@@ -9,5 +9,15 @@ build/
 .env.*
 !.env.example
 !.env.template
-.DS_Store
+
+# Liquify working clone (the committed override points at vendor/liquify-patched)
+/vendor/liquify/
+
+# Vendored liquify test goldens (binary snapshots, regenerated per upstream
+# docs; too large to track — needed only to run liquify's own suite locally)
+/vendor/liquify-patched/.golden/
+
+# IntelliJ module file that ships in the upstream clone
+vendor/liquify-patched/liquid_grammar.iml
+
 .tina/
