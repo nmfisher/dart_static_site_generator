@@ -74,7 +74,7 @@ index 11cc3bb..3f5806a 100644
            return ArrayAccess(array.$1, array.$3);
          })
 diff --git a/pkgs/liquify/test/issues_test.dart b/pkgs/liquify/test/issues_test.dart
-index af049a8..f46aab4 100644
+index af049a8..dcddf49 100644
 --- a/pkgs/liquify/test/issues_test.dart
 +++ b/pkgs/liquify/test/issues_test.dart
 @@ -1,3 +1,4 @@
@@ -82,7 +82,7 @@ index af049a8..f46aab4 100644
  import 'package:liquify/src/context.dart';
  import 'package:liquify/src/evaluator.dart';
  import 'package:test/test.dart';
-@@ -31,4 +32,66 @@ These shoes are awesome! {{name}}
+@@ -31,4 +32,88 @@ These shoes are awesome! {{name}}
        },
      );
    });
@@ -125,6 +125,28 @@ index af049a8..f46aab4 100644
 +        expect(
 +          evaluator.buffer.toString().trim(),
 +          equals('found'),
++        );
++      },
++    );
++  });
++
++  test("hash key can be a nested bracket expression", () async {
++    // Mirrors Shopify/liquid's test_expression_with_whitespace_in_square_brackets:
++    // assert_template_result('result', "{{ a[ self[ 'b' ] ] }}",
++    //   { 'b' => 'c', 'a' => { 'c' => 'result' } })
++    await testParser(
++      '''
++{{ a[b['k']] }}
++    ''',
++      (document) {
++        evaluator.context.setVariable('a', {
++          'c': 'result',
++        });
++        evaluator.context.setVariable('b', {'k': 'c'});
++        evaluator.evaluateNodes(document.children);
++        expect(
++          evaluator.buffer.toString().trim(),
++          equals('result'),
 +        );
 +      },
 +    );

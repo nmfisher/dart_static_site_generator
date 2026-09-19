@@ -32,6 +32,24 @@ upstream workspace) — two complementary changes:
    non-literal key could never resolve (hard cast), and the chain form
    `x.y[key]` only worked by accident.
 
+## Conformance with Shopify Liquid
+
+Square-bracket access with a non-literal key is documented and tested
+behavior in the reference implementation:
+
+- Official docs ([Liquid basics → Referencing handles](https://shopify.dev/docs/api/liquid/basics)):
+  square-bracket notation "accepts a handle wrapped in quotes `'`, a Liquid
+  variable, or an object reference".
+- `Shopify/liquid` integration tests (`test/integration/variable_test.rb`):
+  `{{ list[foo] }}` (variable key, Hash and Array targets), `{{ self[key] }}`
+  (dynamic find var), and `{{ a[ self[ 'b' ] ] }}` (key that is itself a
+  bracket expression) — the last is mirrored by the regression test
+  "hash key can be a nested bracket expression".
+
+The patch accepts any expression in the key slot, a slight superset of
+Shopify's grammar (their parser restricts bracket keys to variables and
+lookups); all documented forms behave identically.
+
 ## Upstream PR status
 
 The same diff is intended for a PR to kingwill101/liquify. It currently
@@ -39,14 +57,15 @@ lives on the `fix/variable-key-bracket-access` branch of
 https://github.com/nmfisher/liquify
 ([PR #1](https://github.com/nmfisher/liquify/pull/1) opens it against that
 repo's master; the same branch can be pointed at kingwill101/liquify in a
-follow-up PR). The branch adds regression tests to
-`pkgs/liquify/test/issues_test.dart` on top of the fix; the `.patch` file
-here includes those tests.
+follow-up PR). The branch adds four regression tests to
+`pkgs/liquify/test/issues_test.dart` on top of the fix, including one
+mirroring Shopify's nested-bracket test; the `.patch` file here includes
+those tests.
 
 ## Verification at vendor time
 
-- liquify's own suite (vendored + patched): **743 passed / 0 failed**
-  (740 upstream + 3 new regression tests in `test/issues_test.dart`).
+- liquify's own suite (vendored + patched): **744 passed / 0 failed**
+  (740 upstream + 4 new regression tests in `test/issues_test.dart`).
 - blog_builder suite: 145 passed / 0 failed (6 of them in
   `test/liquify_repro_test.dart` covering bracket access).
 - `dart analyze`: clean on both packages.

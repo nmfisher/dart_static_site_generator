@@ -76,6 +76,28 @@ These shoes are awesome! {{name}}
     );
   });
 
+  test("hash key can be a nested bracket expression", () async {
+    // Mirrors Shopify/liquid's test_expression_with_whitespace_in_square_brackets:
+    // assert_template_result('result', "{{ a[ self[ 'b' ] ] }}",
+    //   { 'b' => 'c', 'a' => { 'c' => 'result' } })
+    await testParser(
+      '''
+{{ a[b['k']] }}
+    ''',
+      (document) {
+        evaluator.context.setVariable('a', {
+          'c': 'result',
+        });
+        evaluator.context.setVariable('b', {'k': 'c'});
+        evaluator.evaluateNodes(document.children);
+        expect(
+          evaluator.buffer.toString().trim(),
+          equals('result'),
+        );
+      },
+    );
+  });
+
   test("list index can be any expression", () async {
     await testParser(
       '''
