@@ -226,6 +226,12 @@ When i18n is enabled, templates can inspect the page's locale and cross-links:
 - `page.locale` — the locale code this page variant belongs to (`"en"`,
   `"de"`, ...). Unset on default-locale pages, so
   `{% if page.locale == 'de' %}` is the usual switch.
+- `page.long_date` renders in the page's locale (ticket 004): `en`
+  "July 15, 2026", `de` "15. Juli 2026", `zh` "2026年7月15日", plus the other
+  built-in patterns (`ja`, `fr`, `es`, `pt`, `it`, `nl`, `ko`, `ru`; BCP 47
+  subtags like `zh-CN` use the primary language). Unmapped locales keep the
+  English format. `page.formatted_date` stays ISO `yyyy-MM-dd` in every
+  locale, so `<time datetime=...>` output is locale-independent.
 - `page.extras.alternates` — map of locale code -> route for every existing
   translation of the page (including its own locale). The bundled
   `seo.liquid` renders these as hreflang links; custom heads can iterate it

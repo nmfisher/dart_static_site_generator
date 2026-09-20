@@ -239,6 +239,51 @@ English product
     expect(deHome, contains('Audio Lip-Sync Pro:/shop/lip-sync'));
   });
 
+  test('long_date renders per page locale; formatted_date stays ISO '
+      '(ticket 004)', () async {
+    await Directory('${site.path}/content/news').create(recursive: true);
+    await Directory('${site.path}/content/zh/news').create(recursive: true);
+    await File('${site.path}/content/news/launch.md').writeAsString('''
+---
+published: true
+title: Launch
+date: 2026-07-15
+layout: post
+---
+English news
+''');
+    await File('${site.path}/content/zh/news/launch.md').writeAsString('''
+---
+published: true
+title: 发布
+date: 2026-07-15
+locale: zh
+layout: post
+---
+中文新闻
+''');
+    // The i18n fixture configures en/de; add zh to exercise CJK dates.
+    await File('${site.path}/config.yaml').writeAsString('''
+title: I18n Site
+baseUrl: https://example.com
+default_locale: en
+locales:
+  en: { name: English }
+  de: { name: Deutsch }
+  zh: { name: 中文 }
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/post.liquid').writeAsString(
+        '<time datetime="{{ page.formatted_date }}">{{ page.long_date }}</time>');
+    await build();
+    final en = File('${site.path}/.out-all/news/launch/index.html')
+        .readAsStringSync();
+    expect(en, contains('<time datetime="2026-07-15">July 15, 2026</time>'));
+    final zh = File('${site.path}/.out-all/zh/news/launch/index.html')
+        .readAsStringSync();
+    expect(zh, contains('<time datetime="2026-07-15">2026年7月15日</time>'));
+  });
+
   test('unknown locale filter fails fast', () async {
     final builder = StaticSiteBuilder(
         inputDir: site.path,

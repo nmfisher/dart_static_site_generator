@@ -2,7 +2,7 @@
 
 Repo: dart_static_site_generator
 Filed by: holotype_shop i18n integration
-Status: proposed
+Status: done
 Priority: medium
 Related: 001
 
