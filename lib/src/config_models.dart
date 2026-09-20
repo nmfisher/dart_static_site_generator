@@ -134,6 +134,10 @@ class ConfigModel {
   final AtProtoConfig atProto; // AT Protocol comment system configuration
   final I18nConfig i18n; // Per-locale build configuration
 
+  /// Optional per-locale string tables (ticket 005): locale code ->
+  /// YAML file path, relative to the site input directory.
+  final Map<String, String> stringsPaths;
+
   ConfigModel({
     this.title,
     required this.metadata,
@@ -151,7 +155,9 @@ class ConfigModel {
     RssConfig? rss,
     AtProtoConfig? atProto,
     I18nConfig? i18n,
-  })  : basePath = normalizeBasePath(
+    Map<String, String>? stringsPaths,
+  })  : stringsPaths = stringsPaths ?? const {},
+        basePath = normalizeBasePath(
             basePath ?? (baseUrl == null ? '' : Uri.parse(baseUrl).path)),
         imageOptimization = imageOptimization ?? ImageOptimizationConfig(),
         rss = rss ?? RssConfig(),
@@ -231,6 +237,27 @@ class ConfigModel {
     final i18nConfig = I18nConfig.parse(
         locales: cfg['locales'], defaultLocale: cfg['default_locale']);
 
+    // Parse optional per-locale string tables (ticket 005):
+    // strings: { <locale>: <path relative to the site root> }
+    final stringsPaths = <String, String>{};
+    if (cfg['strings'] != null) {
+      if (cfg['strings'] is! YamlMap) {
+        throw FormatException('strings must be a map of locale -> path');
+      }
+      for (final entry in (cfg['strings'] as YamlMap).entries) {
+        final locale = entry.key.toString();
+        if (!i18nConfig.locales.any((l) => l.code == locale)) {
+          throw FormatException(
+              'strings table for unknown locale "$locale"; configured: ${i18nConfig.locales.map((l) => l.code).join(', ')}');
+        }
+        final pathValue = entry.value?.toString() ?? '';
+        if (pathValue.isEmpty) {
+          throw FormatException('strings table for "$locale" needs a path');
+        }
+        stringsPaths[locale] = pathValue;
+      }
+    }
+
     final pageSize = _positiveInt(
         cfg['pagination']?['page_size'], 10, 'pagination.page_size');
     final collections = <String, CollectionConfig>{};
@@ -276,6 +303,7 @@ class ConfigModel {
       rss: rssConfig,
       atProto: atProtoConfig,
       i18n: i18nConfig,
+      stringsPaths: stringsPaths,
     );
   }
 

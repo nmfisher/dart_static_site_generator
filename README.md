@@ -255,6 +255,24 @@ When i18n is enabled, templates can inspect the page's locale and cross-links:
   `.count` and to the per-locale archive pages. Default-locale pages always
   see the default drops.
 
+- `site.strings` — per-locale string tables (ticket 005) for template copy
+  that should not live in markup. Configure top-level `strings:` entries
+  mapping a locale to a YAML file:
+
+  ```yaml
+  strings:
+    en: strings/en.yaml
+    de: strings/de.yaml
+  ```
+
+  Each file is a nested map (`nav: {shop: SHOP}` renders as
+  `{{ site.strings.nav.shop }}`). On a page of locale `L`, `site.strings`
+  is `L`'s table, falling back to the default locale's table when `L` has
+  none; sites without a `strings:` config leave `site.strings` undefined.
+  Templates referencing a key that any loaded table does not define fail
+  the build (fail loud, with the key, template, and locale named) — a
+  missing translation is a build error, not silent English output.
+
 Note that `{% render %}` isolates scope: an include only sees `page.locale`
 if the caller passes it explicitly, e.g.
 `{% render '_includes/footer.liquid' with page: page %}`. Includes rendered

@@ -284,6 +284,101 @@ locales:
     expect(zh, contains('<time datetime="2026-07-15">2026年7月15日</time>'));
   });
 
+  test('site.strings renders locale string tables (ticket 005)', () async {
+    await Directory('${site.path}/strings').create(recursive: true);
+    await File('${site.path}/strings/en.yaml').writeAsString('''
+nav:
+  shop: SHOP
+  about: About
+''');
+    await File('${site.path}/strings/de.yaml').writeAsString('''
+nav:
+  shop: Laden
+  about: Über uns
+''');
+    await File('${site.path}/config.yaml').writeAsString('''
+title: I18n Site
+baseUrl: https://example.com
+default_locale: en
+locales:
+  en: { name: English }
+  de: { name: Deutsch }
+strings:
+  en: strings/en.yaml
+  de: strings/de.yaml
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/post.liquid')
+        .writeAsString('nav={{ site.strings.nav.shop }}');
+    // Route the fixture posts through the probe layout.
+    await File('${site.path}/content/posts/hello.md').writeAsString('''
+---
+published: true
+title: Hello
+date: 2024-01-01
+tags: [x]
+layout: post
+---
+Hello world
+''');
+    await File('${site.path}/content/de/posts/hello.md').writeAsString('''
+---
+published: true
+title: Hallo
+date: 2024-01-01
+locale: de
+layout: post
+---
+Hallo Welt
+''');
+    await build();
+    final en = File('${site.path}/.out-all/posts/hello/index.html')
+        .readAsStringSync();
+    expect(en, contains('nav=SHOP'));
+    final de = File('${site.path}/.out-all/de/posts/hello/index.html')
+        .readAsStringSync();
+    expect(de, contains('nav=Laden'));
+  });
+
+  test('missing site.strings key fails the build naming the key '
+      '(ticket 005)', () async {
+    await Directory('${site.path}/strings').create(recursive: true);
+    await File('${site.path}/strings/en.yaml').writeAsString('''
+nav:
+  shop: SHOP
+''');
+    await File('${site.path}/strings/de.yaml').writeAsString('''
+nav:
+  home: Start
+''');
+    await File('${site.path}/config.yaml').writeAsString('''
+title: I18n Site
+baseUrl: https://example.com
+default_locale: en
+locales:
+  en: { name: English }
+  de: { name: Deutsch }
+strings:
+  en: strings/en.yaml
+  de: strings/de.yaml
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/post.liquid')
+        .writeAsString('{{ site.strings.nav.shop }}');
+    final builder = StaticSiteBuilder(
+        inputDir: site.path, outputDir: '${site.path}/.out-str', announce: false);
+    await expectLater(builder.build(), throwsFormatException);
+  });
+
+  test('absent strings config leaves site.strings undefined and builds '
+      '(ticket 005)', () async {
+    // The shared fixture config has no strings block; the default template
+    // never references site.strings, so the build must succeed.
+    final builder = await build();
+    expect(builder.siteConfig.stringsPaths, isEmpty);
+    expect(builder.siteData.toLiquidMap().containsKey('strings'), isFalse);
+  });
+
   test('unknown locale filter fails fast', () async {
     final builder = StaticSiteBuilder(
         inputDir: site.path,
