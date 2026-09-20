@@ -14,6 +14,19 @@ class ContentCatalog {
   ContentCatalog(this.config, {I18nConfig? i18n})
       : i18n = i18n ?? config.i18n;
 
+  /// The pages of collection [name] as visible on a page of locale [locale].
+  ///
+  /// With i18n, translated pages live in per-locale buckets (`shop@de`), so a
+  /// de page must see the `de` bucket rather than the default-locale one.
+  /// When the locale bucket is missing or empty the default-locale bucket is
+  /// returned instead, so partially translated collections never go empty.
+  List<PageModel> bucketFor(String name, String? locale) {
+    final localeKey = locale == null ? null : '$name@$locale';
+    final localeBucket = localeKey == null ? null : collections[localeKey];
+    if (localeBucket != null && localeBucket.isNotEmpty) return localeBucket;
+    return collections[name] ?? const <PageModel>[];
+  }
+
   void collect(List<PageModel> pages, String contentDir) {
     for (final entry in config.collections.entries) {
       collections[entry.key] = [];
@@ -134,10 +147,12 @@ class ContentCatalog {
           allowManual: true);
       // Per-locale archives (ticket 001): paginate the translated pages
       // of each non-default locale under /<locale>/<collection path>/...
+      // An empty locale bucket falls back to the default-locale bucket so
+      // the archive matches what site.<collection>.all shows that locale.
       for (final locale in i18n.locales.skip(1)) {
-        final translated =
-            collections['${entry.key}@${locale.code}'] ?? const <PageModel>[];
-        if (translated.isEmpty) continue;
+        final translated = bucketFor(entry.key, locale.code);
+        if (translated.isEmpty || identical(translated, collections[entry.key]))
+          continue;
         paginate('${i18n.prefix(locale)}/${entry.value.path}',
             entry.value.title, translated, entry.value.pageSize);
       }
@@ -200,16 +215,22 @@ class ContentCatalog {
     }
   }
 
-  Map<String, dynamic> toMap() => {
+  /// The template-facing catalog payload.
+  ///
+  /// With [locale], collection entries resolve locale-scoped first and fall
+  /// back to the default-locale bucket (see [bucketFor]); without it the
+  /// payload is exactly the default-locale view.
+  Map<String, dynamic> toMap({String? locale}) => {
         'collections': {
           for (final entry in collections.entries)
             if (!entry.key.contains('@'))
               entry.key: {
-              'name': entry.key,
-              'title': config.collections[entry.key]?.title ?? entry.key,
-              'route': '/${config.collections[entry.key]?.path ?? entry.key}',
-              'all': entry.value.map((p) => p.toMap()).toList(),
-                'count': entry.value.length
+                'name': entry.key,
+                'title': config.collections[entry.key]?.title ?? entry.key,
+                'route': '/${config.collections[entry.key]?.path ?? entry.key}',
+                'all':
+                    bucketFor(entry.key, locale).map((p) => p.toMap()).toList(),
+                'count': bucketFor(entry.key, locale).length
               }
         },
         'tags': {

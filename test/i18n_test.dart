@@ -182,6 +182,203 @@ Deutschland
     expect(File('${output.path}/posts').existsSync(), isFalse);
   });
 
+  test('site.<collection> resolves the page locale bucket (ticket 002)',
+      () async {
+    // A shop collection with an en product and a de translation.
+    await Directory('${site.path}/content/shop').create(recursive: true);
+    await Directory('${site.path}/content/de/shop').create(recursive: true);
+    await File('${site.path}/content/shop/lip-sync.md').writeAsString('''
+---
+published: true
+title: Audio Lip-Sync Pro
+date: 2024-03-01
+---
+English product
+''');
+    await File('${site.path}/content/de/shop/lip-sync.md').writeAsString('''
+---
+published: true
+title: Audio Lip-Sync Pro (DE)
+date: 2024-03-01
+locale: de
+---
+Deutsches Produkt
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/list.liquid').writeAsString(
+        '{% for p in site.shop.all %}<li>{{ p.title }}:{{ p.route }}</li>{% endfor %}');
+    await build();
+    final enHome = File('${site.path}/.out-all/index.html').readAsStringSync();
+    expect(enHome, contains('Audio Lip-Sync Pro:/shop/lip-sync'));
+    expect(enHome.contains('/de/shop/'), isFalse);
+    final deHome =
+        File('${site.path}/.out-all/de/index.html').readAsStringSync();
+    expect(deHome, contains('Audio Lip-Sync Pro (DE):/de/shop/lip-sync'));
+    expect(deHome.contains(':/shop/lip-sync'), isFalse);
+  });
+
+  test('mixed translations fall back to the default bucket (ticket 002)',
+      () async {
+    // A shop collection with an en product and no de translation: the de
+    // home must still list it (default bucket) instead of going empty.
+    await Directory('${site.path}/content/shop').create(recursive: true);
+    await File('${site.path}/content/shop/lip-sync.md').writeAsString('''
+---
+published: true
+title: Audio Lip-Sync Pro
+date: 2024-03-01
+---
+English product
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/list.liquid').writeAsString(
+        '{% for p in site.shop.all %}<li>{{ p.title }}:{{ p.route }}</li>{% endfor %}');
+    await build();
+    final deHome =
+        File('${site.path}/.out-all/de/index.html').readAsStringSync();
+    expect(deHome, contains('Audio Lip-Sync Pro:/shop/lip-sync'));
+  });
+
+  test('long_date renders per page locale; formatted_date stays ISO '
+      '(ticket 004)', () async {
+    await Directory('${site.path}/content/news').create(recursive: true);
+    await Directory('${site.path}/content/zh/news').create(recursive: true);
+    await File('${site.path}/content/news/launch.md').writeAsString('''
+---
+published: true
+title: Launch
+date: 2026-07-15
+layout: post
+---
+English news
+''');
+    await File('${site.path}/content/zh/news/launch.md').writeAsString('''
+---
+published: true
+title: 发布
+date: 2026-07-15
+locale: zh
+layout: post
+---
+中文新闻
+''');
+    // The i18n fixture configures en/de; add zh to exercise CJK dates.
+    await File('${site.path}/config.yaml').writeAsString('''
+title: I18n Site
+baseUrl: https://example.com
+default_locale: en
+locales:
+  en: { name: English }
+  de: { name: Deutsch }
+  zh: { name: 中文 }
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/post.liquid').writeAsString(
+        '<time datetime="{{ page.formatted_date }}">{{ page.long_date }}</time>');
+    await build();
+    final en = File('${site.path}/.out-all/news/launch/index.html')
+        .readAsStringSync();
+    expect(en, contains('<time datetime="2026-07-15">July 15, 2026</time>'));
+    final zh = File('${site.path}/.out-all/zh/news/launch/index.html')
+        .readAsStringSync();
+    expect(zh, contains('<time datetime="2026-07-15">2026年7月15日</time>'));
+  });
+
+  test('site.strings renders locale string tables (ticket 005)', () async {
+    await Directory('${site.path}/strings').create(recursive: true);
+    await File('${site.path}/strings/en.yaml').writeAsString('''
+nav:
+  shop: SHOP
+  about: About
+''');
+    await File('${site.path}/strings/de.yaml').writeAsString('''
+nav:
+  shop: Laden
+  about: Über uns
+''');
+    await File('${site.path}/config.yaml').writeAsString('''
+title: I18n Site
+baseUrl: https://example.com
+default_locale: en
+locales:
+  en: { name: English }
+  de: { name: Deutsch }
+strings:
+  en: strings/en.yaml
+  de: strings/de.yaml
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/post.liquid')
+        .writeAsString('nav={{ site.strings.nav.shop }}');
+    // Route the fixture posts through the probe layout.
+    await File('${site.path}/content/posts/hello.md').writeAsString('''
+---
+published: true
+title: Hello
+date: 2024-01-01
+tags: [x]
+layout: post
+---
+Hello world
+''');
+    await File('${site.path}/content/de/posts/hello.md').writeAsString('''
+---
+published: true
+title: Hallo
+date: 2024-01-01
+locale: de
+layout: post
+---
+Hallo Welt
+''');
+    await build();
+    final en = File('${site.path}/.out-all/posts/hello/index.html')
+        .readAsStringSync();
+    expect(en, contains('nav=SHOP'));
+    final de = File('${site.path}/.out-all/de/posts/hello/index.html')
+        .readAsStringSync();
+    expect(de, contains('nav=Laden'));
+  });
+
+  test('missing site.strings key fails the build naming the key '
+      '(ticket 005)', () async {
+    await Directory('${site.path}/strings').create(recursive: true);
+    await File('${site.path}/strings/en.yaml').writeAsString('''
+nav:
+  shop: SHOP
+''');
+    await File('${site.path}/strings/de.yaml').writeAsString('''
+nav:
+  home: Start
+''');
+    await File('${site.path}/config.yaml').writeAsString('''
+title: I18n Site
+baseUrl: https://example.com
+default_locale: en
+locales:
+  en: { name: English }
+  de: { name: Deutsch }
+strings:
+  en: strings/en.yaml
+  de: strings/de.yaml
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/post.liquid')
+        .writeAsString('{{ site.strings.nav.shop }}');
+    final builder = StaticSiteBuilder(
+        inputDir: site.path, outputDir: '${site.path}/.out-str', announce: false);
+    await expectLater(builder.build(), throwsFormatException);
+  });
+
+  test('absent strings config leaves site.strings undefined and builds '
+      '(ticket 005)', () async {
+    // The shared fixture config has no strings block; the default template
+    // never references site.strings, so the build must succeed.
+    final builder = await build();
+    expect(builder.siteConfig.stringsPaths, isEmpty);
+    expect(builder.siteData.toLiquidMap().containsKey('strings'), isFalse);
+  });
+
   test('unknown locale filter fails fast', () async {
     final builder = StaticSiteBuilder(
         inputDir: site.path,

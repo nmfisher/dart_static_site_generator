@@ -14,6 +14,7 @@ import 'package:file/local.dart';
 import 'package:liquify/liquify.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:blog_builder/src/site_data_model.dart'; // New import
+import 'package:blog_builder/src/string_tables.dart';
 import 'package:blog_builder/src/webp_html_processor.dart';
 
 class StaticSiteBuilder {
@@ -30,6 +31,7 @@ class StaticSiteBuilder {
   final Map<String, String> renderedPages = {};
   Future<void> _pending = Future.value();
   ContentCatalog? _catalog;
+  StringTables? _strings;
   late ConfigModel siteConfig;
   late I18nConfig i18n;
   /// Locales receiving generated artifacts (all, or just the CLI filter).
@@ -127,6 +129,8 @@ class StaticSiteBuilder {
     webpProcessor.clear();
     await _validateOutputDirectory();
     await _parseConfig();
+    _strings = StringTables.load(siteConfig.stringsPaths,
+        (path) => fileSystem.file(pathlib.join(inputDir, path)).readAsStringSync());
     if (siteConfig.rss.enabled) {
       final name = siteConfig.rss.fileName;
       _outputPath(name);
@@ -154,6 +158,7 @@ class StaticSiteBuilder {
     }
 
     await _setupTemplateRoot();
+    await _validateStringTables();
 
     if (_injectedRenderer == null) {
       if (_templateRoot == null) {
@@ -244,7 +249,16 @@ class StaticSiteBuilder {
     _catalog!.rebind(pages);
 
     // Build the hierarchical site data after all pages (including generated index pages) are parsed
-    siteData = _buildSiteData(pages)..extraData = _catalog!.toMap;
+    final strings = _strings!;
+    siteData = _buildSiteData(pages)..extraData = (locale) => {
+          ..._catalog!.toMap(locale: locale),
+          // Ticket 005: the page locale's string table, falling back to the
+          // default locale's table. Absent config leaves site.strings
+          // undefined.
+          if (!strings.isEmpty)
+            'strings': strings.forLocale(
+                locale, siteConfig.i18n.defaultLocale.code),
+        };
 
     await _renderAllPages(pages);
 
@@ -405,6 +419,23 @@ class StaticSiteBuilder {
           'Output path escapes the output directory: $relativePath');
     }
     return destination;
+  }
+
+  /// Fails the build when a template references `site.strings.<key>` that no
+  /// configured string table defines (ticket 005, fail loud).
+  Future<void> _validateStringTables() async {
+    final strings = _strings;
+    if (strings == null) return;
+    final templatesDir =
+        fileSystem.directory(pathlib.join(inputDir, 'templates'));
+    if (!await templatesDir.exists()) return;
+    final issues = <String>[];
+    for (final entity in templatesDir.listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.liquid')) continue;
+      issues.addAll(StringTables.validateSource(
+          await entity.readAsString(), entity.path, strings));
+    }
+    if (issues.isNotEmpty) throw FormatException(issues.join('\n'));
   }
 
   Future<void> _parseConfig() async {

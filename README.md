@@ -226,6 +226,12 @@ When i18n is enabled, templates can inspect the page's locale and cross-links:
 - `page.locale` — the locale code this page variant belongs to (`"en"`,
   `"de"`, ...). Unset on default-locale pages, so
   `{% if page.locale == 'de' %}` is the usual switch.
+- `page.long_date` renders in the page's locale (ticket 004): `en`
+  "July 15, 2026", `de` "15. Juli 2026", `zh` "2026年7月15日", plus the other
+  built-in patterns (`ja`, `fr`, `es`, `pt`, `it`, `nl`, `ko`, `ru`; BCP 47
+  subtags like `zh-CN` use the primary language). Unmapped locales keep the
+  English format. `page.formatted_date` stays ISO `yyyy-MM-dd` in every
+  locale, so `<time datetime=...>` output is locale-independent.
 - `page.extras.alternates` — map of locale code -> route for every existing
   translation of the page (including its own locale). The bundled
   `seo.liquid` renders these as hreflang links; custom heads can iterate it
@@ -240,6 +246,32 @@ When i18n is enabled, templates can inspect the page's locale and cross-links:
 - `site.i18n.enabled` / `site.i18n.default.code` — whether more than one
   locale is configured, and the default locale's code (useful for
   `hreflang="x-default"`).
+- `site.<collection>` — locale-scoped (ticket 002): on a page whose locale is
+  `L`, top-level collection drops resolve from the `/L/<collection>` subtree
+  first, so `site.shop.all` lists the translated products with their `/L/...`
+  routes. A collection that has no `L` entries (missing or empty subtree)
+  falls back to the default-locale drop, so partially translated sites never
+  go empty. The same scoping applies to `site.collections.<name>.all` /
+  `.count` and to the per-locale archive pages. Default-locale pages always
+  see the default drops.
+
+- `site.strings` — per-locale string tables (ticket 005) for template copy
+  that should not live in markup. Configure top-level `strings:` entries
+  mapping a locale to a YAML file:
+
+  ```yaml
+  strings:
+    en: strings/en.yaml
+    de: strings/de.yaml
+  ```
+
+  Each file is a nested map (`nav: {shop: SHOP}` renders as
+  `{{ site.strings.nav.shop }}`). On a page of locale `L`, `site.strings`
+  is `L`'s table, falling back to the default locale's table when `L` has
+  none; sites without a `strings:` config leave `site.strings` undefined.
+  Templates referencing a key that any loaded table does not define fail
+  the build (fail loud, with the key, template, and locale named) — a
+  missing translation is a build error, not silent English output.
 
 Note that `{% render %}` isolates scope: an include only sees `page.locale`
 if the caller passes it explicitly, e.g.
@@ -258,13 +290,17 @@ parsing in two observable ways:
    every occurrence. (Real case: a consumer's `news_article.liquid` used
    `{{{ content }}}` and stopped building until rewritten; output verified
    unchanged after the rewrite.)
-2. **Collection drops list direct children only.** `site.<collection>.all`
-   holds pages whose source sits directly under the collection's content
-   path; nested sub-directories form their own drops
-   (`site.shop.blender.all`) and are no longer merged into the parent, so
-   `site.shop.all` on a shop with sub-categories lists only its direct
-   children. Templates that relied on parent drops aggregating descendants
-   must iterate the child drops explicitly. (See .tickets/003.)
+2. **Collection drops aggregate their sub-collections.** `site.<collection>.all`
+   holds the collection's direct pages **plus every page in nested
+   sub-directories** (`site.shop.all` on a shop with `blender/` and
+   `unreal/` sub-directories lists all of them, sorted by the usual
+   priority/date rule). Child drops stay exclusive: `site.shop.blender.all`
+   is still exactly the blender pages. This matches the `all_*` convention
+   of Shopify's collection object ("total ... in a collection", not a
+   filtered subset) and Jekyll's flat recursive collections. Note the
+   contrast with liquify 1.3.x, where the bare route-tree drop listed only
+   direct children while the catalog drop (`site.collections.shop.all`)
+   aggregated; the two surfaces now agree on aggregation.
 
 Also new: generated index pages for directories inside `content/<locale>/`
 are suppressed — add explicit `index.md` files if you want locale sub-index

@@ -335,11 +335,11 @@ class PageModel {
       'route': route,
       'metadata': metadata,
       'date': date,
+      // Machine-readable ISO always (locale-independent); long_date renders
+      // per the page's locale (ticket 004).
       'formatted_date':
           date == null ? null : DateFormat('yyyy-MM-dd', 'en_US').format(date!),
-      'long_date': date == null
-          ? null
-          : DateFormat('MMMM dd, yyyy', 'en_US').format(date!),
+      'long_date': _localizedLongDate(date, locale),
       'blurb': blurb,
       'source': source,
       'draft': draft,
@@ -460,6 +460,68 @@ class PageModel {
     }
 
     return null;
+  }
+
+  /// Long-form date rendering per the page's locale (ticket 004).
+  ///
+  /// A hardcoded pattern map covers the configured locales without pulling
+  /// locale-data initialization; unknown locales fall back to the English
+  /// pattern so default-locale output is unchanged. `formatted_date`
+  /// stays ISO regardless of locale.
+  static String? _localizedLongDate(DateTime? date, String? locale) {
+    if (date == null) return null;
+    final code = (locale ?? '').toLowerCase();
+    // BCP 47 primary subsequence: zh-CN -> zh.
+    final primary = code.split('-').first;
+    const patterns = <String, String>{
+      'zh': 'yyyy年M月d日',
+      'ja': 'yyyy年M月d日',
+      'de': 'd. MMMM yyyy',
+      'fr': 'd MMMM yyyy',
+      'es': 'd de MMMM de yyyy',
+      'pt': 'd \'de\' MMMM \'de\' yyyy',
+      'it': 'd MMMM yyyy',
+      'nl': 'd MMMM yyyy',
+      'ko': 'yyyy년 M월 d일',
+      'ru': 'd MMMM yyyy г.',
+    };
+    final pattern = patterns[primary];
+    if (pattern == null) {
+      // English and unmapped locales keep the existing format.
+      return DateFormat('MMMM dd, yyyy', 'en_US').format(date);
+    }
+    final month = _localizedMonth(date.month, primary);
+    return pattern
+        .replaceFirst('MMMM', month)
+        .replaceFirst('yyyy', date.year.toString().padLeft(4, '0'))
+        .replaceFirst('M', date.month.toString())
+        .replaceFirst('d', date.day.toString());
+  }
+
+  static String _localizedMonth(int month, String primary) {
+    const months = <String, List<String>>{
+      'zh': ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'],
+      'ja': ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+      'de': ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli',
+        'August', 'September', 'Oktober', 'November', 'Dezember'],
+      'fr': ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+        'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+      'es': ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+        'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+      'pt': ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'],
+      'it': ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+        'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'],
+      'nl': ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli',
+        'augustus', 'september', 'oktober', 'november', 'december'],
+      'ko': ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월',
+        '10월', '11월', '12월'],
+      'ru': ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
+        'августа', 'сентября', 'октября', 'ноября', 'декабря'],
+    };
+    final list = months[primary];
+    if (list == null || month < 1 || month > 12) return '';
+    return list[month - 1];
   }
 }
 
