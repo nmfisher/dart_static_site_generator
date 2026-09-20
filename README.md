@@ -219,6 +219,57 @@ directly. Build a single locale with `blog_builder build --locale de`
 (default-locale pages are then omitted). Untranslated pages still appear in
 each locale's search index and feed, pointing at the default-locale URL.
 
+### Template variables
+
+When i18n is enabled, templates can inspect the page's locale and cross-links:
+
+- `page.locale` — the locale code this page variant belongs to (`"en"`,
+  `"de"`, ...). Unset on default-locale pages, so
+  `{% if page.locale == 'de' %}` is the usual switch.
+- `page.extras.alternates` — map of locale code -> route for every existing
+  translation of the page (including its own locale). The bundled
+  `seo.liquid` renders these as hreflang links; custom heads can iterate it
+  directly:
+
+  ```liquid
+  {% for pair in page.extras.alternates %}
+  <link rel="alternate" hreflang="{{ pair[0] }}" href="{{ pair[1] | absolute_url }}">
+  {% endfor %}
+  ```
+
+- `site.i18n.enabled` / `site.i18n.default.code` — whether more than one
+  locale is configured, and the default locale's code (useful for
+  `hreflang="x-default"`).
+
+Note that `{% render %}` isolates scope: an include only sees `page.locale`
+if the caller passes it explicitly, e.g.
+`{% render '_includes/footer.liquid' with page: page %}`. Includes rendered
+without `page:` silently render default-locale output.
+
+## Migrating templates to liquify 1.6.x
+
+The liquify 1.6.1 upgrade (required for i18n builds) changed template
+parsing in two observable ways:
+
+1. **Triple-brace output `{{{ var }}}` no longer parses.** Layout analysis
+   fails with `Failed to analyze layout template`. Rewrite as `{{ var }}`:
+   liquify 1.6.x renders `{{ content }}` (and other raw-HTML values)
+   unescaped, so output is identical. Search templates for `{{{` and replace
+   every occurrence. (Real case: a consumer's `news_article.liquid` used
+   `{{{ content }}}` and stopped building until rewritten; output verified
+   unchanged after the rewrite.)
+2. **Collection drops list direct children only.** `site.<collection>.all`
+   holds pages whose source sits directly under the collection's content
+   path; nested sub-directories form their own drops
+   (`site.shop.blender.all`) and are no longer merged into the parent, so
+   `site.shop.all` on a shop with sub-categories lists only its direct
+   children. Templates that relied on parent drops aggregating descendants
+   must iterate the child drops explicitly. (See .tickets/003.)
+
+Also new: generated index pages for directories inside `content/<locale>/`
+are suppressed — add explicit `index.md` files if you want locale sub-index
+pages.
+
 ## Incremental builds
 
 The cache lives under `<input>/.blog-cache/v1/`. It stores parsed pages, rendered
