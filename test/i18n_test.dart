@@ -182,6 +182,63 @@ Deutschland
     expect(File('${output.path}/posts').existsSync(), isFalse);
   });
 
+  test('site.<collection> resolves the page locale bucket (ticket 002)',
+      () async {
+    // A shop collection with an en product and a de translation.
+    await Directory('${site.path}/content/shop').create(recursive: true);
+    await Directory('${site.path}/content/de/shop').create(recursive: true);
+    await File('${site.path}/content/shop/lip-sync.md').writeAsString('''
+---
+published: true
+title: Audio Lip-Sync Pro
+date: 2024-03-01
+---
+English product
+''');
+    await File('${site.path}/content/de/shop/lip-sync.md').writeAsString('''
+---
+published: true
+title: Audio Lip-Sync Pro (DE)
+date: 2024-03-01
+locale: de
+---
+Deutsches Produkt
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/list.liquid').writeAsString(
+        '{% for p in site.shop.all %}<li>{{ p.title }}:{{ p.route }}</li>{% endfor %}');
+    await build();
+    final enHome = File('${site.path}/.out-all/index.html').readAsStringSync();
+    expect(enHome, contains('Audio Lip-Sync Pro:/shop/lip-sync'));
+    expect(enHome.contains('/de/shop/'), isFalse);
+    final deHome =
+        File('${site.path}/.out-all/de/index.html').readAsStringSync();
+    expect(deHome, contains('Audio Lip-Sync Pro (DE):/de/shop/lip-sync'));
+    expect(deHome.contains(':/shop/lip-sync'), isFalse);
+  });
+
+  test('mixed translations fall back to the default bucket (ticket 002)',
+      () async {
+    // A shop collection with an en product and no de translation: the de
+    // home must still list it (default bucket) instead of going empty.
+    await Directory('${site.path}/content/shop').create(recursive: true);
+    await File('${site.path}/content/shop/lip-sync.md').writeAsString('''
+---
+published: true
+title: Audio Lip-Sync Pro
+date: 2024-03-01
+---
+English product
+''');
+    await Directory('${site.path}/templates/_layouts').create(recursive: true);
+    await File('${site.path}/templates/_layouts/list.liquid').writeAsString(
+        '{% for p in site.shop.all %}<li>{{ p.title }}:{{ p.route }}</li>{% endfor %}');
+    await build();
+    final deHome =
+        File('${site.path}/.out-all/de/index.html').readAsStringSync();
+    expect(deHome, contains('Audio Lip-Sync Pro:/shop/lip-sync'));
+  });
+
   test('unknown locale filter fails fast', () async {
     final builder = StaticSiteBuilder(
         inputDir: site.path,

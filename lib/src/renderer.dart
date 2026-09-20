@@ -46,7 +46,10 @@ class TemplateRenderer {
         page.blurb;
     final image = page.metadata['og:image'] ?? config.metadata['og:image'];
     return {
-      'site': {...site.toLiquidMap(), ...config.toMap()},
+      // Collections resolve locale-scoped for this page (ticket 002): a page
+      // with locale L sees site.<name> from the @L bucket, falling back to the
+      // default bucket when the locale has no override.
+      'site': {...site.toLiquidMap(locale: page.locale), ...config.toMap()},
       'page': {
         ...page.toMap(),
         'canonical_url':

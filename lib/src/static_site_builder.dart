@@ -244,7 +244,7 @@ class StaticSiteBuilder {
     _catalog!.rebind(pages);
 
     // Build the hierarchical site data after all pages (including generated index pages) are parsed
-    siteData = _buildSiteData(pages)..extraData = _catalog!.toMap;
+    siteData = _buildSiteData(pages)..extraData = (locale) => _catalog!.toMap(locale: locale);
 
     await _renderAllPages(pages);
 

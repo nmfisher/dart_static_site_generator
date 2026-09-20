@@ -240,6 +240,14 @@ When i18n is enabled, templates can inspect the page's locale and cross-links:
 - `site.i18n.enabled` / `site.i18n.default.code` — whether more than one
   locale is configured, and the default locale's code (useful for
   `hreflang="x-default"`).
+- `site.<collection>` — locale-scoped (ticket 002): on a page whose locale is
+  `L`, top-level collection drops resolve from the `/L/<collection>` subtree
+  first, so `site.shop.all` lists the translated products with their `/L/...`
+  routes. A collection that has no `L` entries (missing or empty subtree)
+  falls back to the default-locale drop, so partially translated sites never
+  go empty. The same scoping applies to `site.collections.<name>.all` /
+  `.count` and to the per-locale archive pages. Default-locale pages always
+  see the default drops.
 
 Note that `{% render %}` isolates scope: an include only sees `page.locale`
 if the caller passes it explicitly, e.g.
