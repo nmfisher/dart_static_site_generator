@@ -106,7 +106,46 @@ void main() {
 
     final map = root.toLiquidMap(locale: 'de');
     final shop = map['shop'] as Map<String, dynamic>;
-    expect(shop.containsKey('all'), isFalse); // no direct de product pages
+    // Aggregated 'all' (ticket 003): the parent drop merges descendant
+    // pages, here the product inside the blender sub-collection.
+    expect(routes(shop), ['/de/shop/blender/x']);
     expect(routes(shop['blender']), ['/de/shop/blender/x']);
+  });
+
+  test('nested collection directories aggregate into the parent drop '
+      '(ticket 003)', () {
+    // content/shop/{holotype.md, blender/{one.md,two.md}, unreal/one.md}
+    final root = SiteData(name: 'root', route: '/');
+    final shop = SiteData(name: 'shop', route: '/shop')
+      ..pages.add(page('Holotype', '/shop/holotype'));
+    final blender = SiteData(name: 'blender', route: '/shop/blender')
+      ..pages.addAll([
+        page('Blender One', '/shop/blender/one'),
+        page('Blender Two', '/shop/blender/two'),
+      ]);
+    blender.children['/shop/blender/one'] =
+        leaf(page('Blender One', '/shop/blender/one'));
+    blender.children['/shop/blender/two'] =
+        leaf(page('Blender Two', '/shop/blender/two'));
+    final unreal = SiteData(name: 'unreal', route: '/shop/unreal')
+      ..pages.add(page('Unreal One', '/shop/unreal/one'));
+    shop.children['blender'] = blender;
+    shop.children['unreal'] = unreal;
+    root.children['shop'] = shop;
+
+    final shopAll = routes(root.toLiquidMap()['shop']);
+    // Sorted deterministically (equal dates fall back to route order):
+    // the direct page plus every descendant page.
+    expect(shopAll,
+        ['/shop/blender/one', '/shop/blender/two', '/shop/holotype',
+         '/shop/unreal/one']);
+    // Child drops stay exclusive.
+    expect(routes(root.toLiquidMap()['shop']['blender']),
+        ['/shop/blender/one', '/shop/blender/two']);
+    expect(routes(root.toLiquidMap()['shop']['unreal']),
+        ['/shop/unreal/one']);
+    // The catalog payload and the drop agree.
+    final catalog = root.toLiquidMap()['collections']?['shop'];
+    expect(catalog, isNull); // no catalog attached in this fixture
   });
 }

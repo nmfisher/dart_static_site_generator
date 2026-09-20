@@ -266,13 +266,17 @@ parsing in two observable ways:
    every occurrence. (Real case: a consumer's `news_article.liquid` used
    `{{{ content }}}` and stopped building until rewritten; output verified
    unchanged after the rewrite.)
-2. **Collection drops list direct children only.** `site.<collection>.all`
-   holds pages whose source sits directly under the collection's content
-   path; nested sub-directories form their own drops
-   (`site.shop.blender.all`) and are no longer merged into the parent, so
-   `site.shop.all` on a shop with sub-categories lists only its direct
-   children. Templates that relied on parent drops aggregating descendants
-   must iterate the child drops explicitly. (See .tickets/003.)
+2. **Collection drops aggregate their sub-collections.** `site.<collection>.all`
+   holds the collection's direct pages **plus every page in nested
+   sub-directories** (`site.shop.all` on a shop with `blender/` and
+   `unreal/` sub-directories lists all of them, sorted by the usual
+   priority/date rule). Child drops stay exclusive: `site.shop.blender.all`
+   is still exactly the blender pages. This matches the `all_*` convention
+   of Shopify's collection object ("total ... in a collection", not a
+   filtered subset) and Jekyll's flat recursive collections. Note the
+   contrast with liquify 1.3.x, where the bare route-tree drop listed only
+   direct children while the catalog drop (`site.collections.shop.all`)
+   aggregated; the two surfaces now agree on aggregation.
 
 Also new: generated index pages for directories inside `content/<locale>/`
 are suppressed — add explicit `index.md` files if you want locale sub-index

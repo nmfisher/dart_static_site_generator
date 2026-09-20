@@ -81,9 +81,16 @@ class SiteData {
       map[pageKey] = pageMap;
     }
 
-    // Add a special 'all' list for pages directly under this node, sorted by priority then date
-    if (pages.isNotEmpty) {
-      final sortedPages = _sortedPages();
+    // Add an 'all' list for this node, sorted by priority then date
+    // (ticket 003): it aggregates this node's direct pages plus every
+    // descendant page, so `site.<parent>.all` lists the whole collection
+    // while child drops stay exclusive (each child's own direct pages).
+    final allPages = [
+      ...pages,
+      for (final child in children.values) ...child._descendantPages(),
+    ];
+    if (allPages.isNotEmpty) {
+      final sortedPages = _sortedPages(allPages);
       map['all'] = [for (final p in sortedPages) p.toMap()];
     }
 
@@ -108,15 +115,21 @@ class SiteData {
       page != null ||
       children.values.any((child) => child.hasContent);
 
-  List<PageModel> _sortedPages() {
+  /// Every page in this subtree: this node's direct pages plus all pages of
+  /// nested children (used by the aggregated `all` list, ticket 003).
+  List<PageModel> _descendantPages() => [
+        ...pages,
+        for (final child in children.values) ...child._descendantPages(),
+      ];
+
+  List<PageModel> _sortedPages([List<PageModel>? source]) {
     int _parsePriority(dynamic v) {
       if (v is num) return v.toInt();
       if (v is String) return int.tryParse(v) ?? 0;
       return 0;
     }
 
-    final sortedPages = List<PageModel>.from(pages)
-      ..sort((a, b) {
+    final sortedPages = List<PageModel>.from(source ?? pages)..sort((a, b) {
         // Sort by priority (lower = first) if present
         final aHasPri = a.extras.containsKey('priority');
         final bHasPri = b.extras.containsKey('priority');
@@ -129,12 +142,14 @@ class SiteData {
         } else if (bHasPri) {
           return 1;
         }
-        // Fall back to date sorting (newest first)
+        // Fall back to date sorting (newest first), route as tiebreaker so
+        // aggregated lists are deterministic (matches ContentCatalog).
         if (a.date == null && b.date == null)
           return a.route.compareTo(b.route);
         if (a.date == null) return 1;
         if (b.date == null) return -1;
-        return b.date!.compareTo(a.date!);
+        final cmp = b.date!.compareTo(a.date!);
+        return cmp != 0 ? cmp : a.route.compareTo(b.route);
       });
     return sortedPages;
   }
