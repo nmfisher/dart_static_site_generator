@@ -20,4 +20,10 @@ build/
 # IntelliJ module file that ships in the upstream clone
 vendor/liquify-patched/liquid_grammar.iml
 
+# Local agent tooling settings (machine-specific permissions)
+.claude/settings.local.json
+
+# macOS resource-fork junk (exFAT/external drives)
+._*
+
 .tina/
