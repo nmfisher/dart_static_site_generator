@@ -297,6 +297,22 @@ class StaticSiteBuilder {
       print(
           '\nSkipping sitemap generation: baseUrl not set or empty in config.yaml');
     }
+
+    await _emitRootNotFoundPage();
+  }
+
+  /// Writes `<output>/404.html` from the rendered default-locale not-found
+  /// page (`404/index.html`). Static hosts (Cloudflare Pages, GitHub Pages,
+  /// Netlify) serve that root file for unknown URLs, and the preview server
+  /// falls back to it too. No-op when the site defines no 404 page.
+  Future<void> _emitRootNotFoundPage() async {
+    final source =
+        fileSystem.file(pathlib.join(_destination, '404', 'index.html'));
+    if (!await source.exists()) return;
+    final target = fileSystem.file(pathlib.join(_destination, '404.html'));
+    await target.writeAsString(await source.readAsString());
+    print(
+        '  -> Generated: ${pathlib.relative(target.path, from: fileSystem.currentDirectory.path)}');
   }
 
   // Resolve existing ancestors as well as symlinks before checking containment.
