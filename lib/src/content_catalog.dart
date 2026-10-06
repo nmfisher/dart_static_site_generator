@@ -32,9 +32,20 @@ class ContentCatalog {
       collections[entry.key] = [];
     }
     for (final page in pages.where((p) => !p.isIndex && !p.generated)) {
-      final source = p
+      var source = p
           .relative(page.source, from: contentDir)
           .replaceAll(p.separator, '/');
+      // Translated content lives under a locale directory
+      // (content/<locale>/shop/...). Strip it so collection matching sees
+      // the same relative path as the default locale and translated pages
+      // join the per-locale bucket of their real collection
+      // (<collection>@<locale>) instead of lumping under <locale>@<locale>.
+      final localeDirs = i18n.locales.skip(1).map((l) => l.code).toSet();
+      final firstSegment =
+          source.contains('/') ? source.split('/').first : '';
+      if (page.locale != null && localeDirs.contains(firstSegment)) {
+        source = source.substring(firstSegment.length + 1);
+      }
       final matches = config.collections.values
           .where((c) => source.startsWith('${c.path}/'))
           .toList()
