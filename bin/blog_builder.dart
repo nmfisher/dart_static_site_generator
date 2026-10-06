@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 import 'package:blog_builder/src/static_site_builder.dart';
+import 'package:blog_builder/src/overwrite_consent.dart';
 import 'package:blog_builder/src/preview_server.dart';
 
 Future<void> main(List<String> args) async {
@@ -27,6 +28,13 @@ Future<void> main(List<String> args) async {
         defaultsTo: true,
         help: 'Create missing Bluesky anchor posts on production builds')
     ..addOption('locale', help: 'Build only the given locale')
+    ..addFlag('backup',
+        negatable: false,
+        help: 'Keep the replaced output as a sibling backup directory')
+    ..addFlag('force',
+        abbr: 'f',
+        negatable: false,
+        help: 'Overwrite an existing output directory without asking')
     ..addOption('host', defaultsTo: '127.0.0.1')
     ..addOption('port', defaultsTo: '8080')
     ..addFlag('help', abbr: 'h', negatable: false);
@@ -52,6 +60,15 @@ Future<void> main(List<String> args) async {
     final port = int.tryParse(options['port'] as String);
     if (port == null || port < 0 || port > 65535)
       throw ArgumentError('port must be between 0 and 65535');
+    final force = options['force'] as bool;
+    if (command == 'build' &&
+        await Directory(output).exists() &&
+        !watch) {
+      final decision = await confirmOutputOverwrite(
+          outputDir: output,
+          force: force);
+      if (decision != OverwriteDecision.proceed) return;
+    }
     final builder = StaticSiteBuilder(
         inputDir: input,
         outputDir: output,
@@ -59,7 +76,8 @@ Future<void> main(List<String> args) async {
         includeDrafts: drafts,
         incremental: options['incremental'] as bool,
         announce: options['announce'] as bool,
-        localeFilter: options['locale'] as String?);
+        localeFilter: options['locale'] as String?,
+        keepBackup: options['backup'] as bool);
     if (command == 'check') {
       final issues = await builder.check();
       for (final issue in issues) {

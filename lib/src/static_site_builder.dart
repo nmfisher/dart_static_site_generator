@@ -20,9 +20,12 @@ import 'package:blog_builder/src/webp_html_processor.dart';
 class StaticSiteBuilder {
   final String inputDir;
   final String outputDir;
-  final bool includeDrafts, preview, incremental, announce;
+  final bool includeDrafts, preview, incremental, announce, keepBackup;
   /// Optional CLI filter: build only this locale's pages (ticket 001).
   final String? localeFilter;
+
+  /// When true, a successful publish keeps the replaced output as a sibling
+  /// backup directory instead of deleting it.
   late final BuildCache cache;
   String? _stagingDir;
   String get _destination => _stagingDir ?? outputDir;
@@ -61,6 +64,7 @@ class StaticSiteBuilder {
     this.incremental = true,
     this.announce = true,
     this.localeFilter,
+    this.keepBackup = false,
   }) : _injectedRenderer = renderer {
     webpProcessor = WebPHtmlProcessor(fileSystem: fileSystem);
     cache = BuildCache(
@@ -108,8 +112,8 @@ class StaticSiteBuilder {
     renderedPages.clear();
     cache.resetStats();
     await _validateOutputDirectory();
-    final transaction =
-        OutputTransaction(fileSystem, fileSystem.path.absolute(outputDir));
+    final transaction = OutputTransaction(fileSystem,
+        fileSystem.path.absolute(outputDir), keepBackup: keepBackup);
     try {
       if (!_checking) _stagingDir = await transaction.begin();
       await _buildSite();

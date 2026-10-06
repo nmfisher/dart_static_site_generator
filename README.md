@@ -43,6 +43,8 @@ without copying an entire theme. `layout: post` resolves `_layouts/post.liquid`.
 | `--host`, `--port` | Preview bind address and port |
 | `--no-incremental` | Disable persistent cache reads and writes |
 | `--no-announce` | Disable build-time Bluesky anchor-post creation |
+| `--force`, `-f` | Overwrite an existing output directory without asking |
+| `--backup` | Keep the replaced output as a timestamped sibling backup directory |
 | `--help`, `-h` | Show command usage |
 
 Watch and preview builds are serialized; edits arriving during a build trigger one
@@ -55,6 +57,20 @@ writing failures. Successful builds remove stale pages and assets. Publication u
 sibling staging and backup directories with rollback on rename failure; the two
 renames can briefly leave the output path absent. Use a separate output directory:
 it cannot overlap the input, content, templates, assets, or cache directories.
+
+### Overwrite consent and backups
+
+By default a `build` into an existing output directory asks for confirmation
+first; the prompt accepts `y`/`yes` and anything else aborts without touching
+the old output. When stdin is unavailable (for example in CI), the build aborts
+with a hint to re-run with `--force`, which skips both the prompt and the
+check. `check`, `--watch`, and `--serve` never prompt.
+
+With `--backup`, a successful publish renames the replaced output to a
+timestamped sibling such as `build-backup-20260106-135001` instead of deleting
+it and prints the backup location. Successive backups in the same second get
+numeric suffixes. Backups are full copies of the previous output, so prune them
+periodically.
 
 `check` reports duplicate routes, conflicting output paths, missing templates,
 invalid frontmatter, missing local images/assets, broken internal links, and missing

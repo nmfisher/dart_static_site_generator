@@ -63,6 +63,14 @@ void main() {
   });
   test('nested WebP conversion points HTML at an existing output file',
       () async {
+    // Skip when the external cwebp binary is not installed (same guard as
+    // test/webp_test.dart).
+    try {
+      await io.Process.run('cwebp', ['-version']);
+    } catch (_) {
+      print('Skipping WebP test: cwebp not available');
+      return;
+    }
     final temp =
         await io.Directory.systemTemp.createTemp('blog-webp-integration-');
     addTearDown(() => temp.delete(recursive: true));
