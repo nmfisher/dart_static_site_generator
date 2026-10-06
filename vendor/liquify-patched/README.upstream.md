@@ -50,10 +50,36 @@ The patch accepts any expression in the key slot, a slight superset of
 Shopify's grammar (their parser restricts bracket keys to variables and
 lookups); all documented forms behave identically.
 
+## Patch: sort filter ignores its property argument
+
+`sort-property-argument.patch` (paths prefixed `pkgs/liquify/`) — the `sort`
+filter ignored its optional property argument and always called
+`List.sort()` on the raw elements. That is wrong twice: for scalars
+(`{{ ['b','a'] | sort: 'x' }}` reordered as if the argument were absent is
+harmless-looking but non-conformant), and fatally for lists of maps — Dart
+maps are not `Comparable`, so `{{ pages | sort: 'priority' }}` threw a
+type-cast error at render time. The fix follows Shopify Liquid: with a
+property argument, elements are ordered by `element[property]` — numbers
+compare numerically, other values as strings, and elements missing the
+property (or holding null) sort last, matching Shopify's
+`nil_safe_compare`. The no-argument form is unchanged. Regression tests
+cover property sort, nil-last, numeric vs lexicographic order, and string
+comparison.
+
+Conformance: the property form is documented Shopify Liquid
+([Liquid filters → sort](https://shopify.dev/docs/api/liquid/filters/sort):
+`{{ array | sort: 'property' }}` — "Sorts the items in an array in
+case-sensitive order... optional parameter... name of a property of the
+array items").
+
+Upstream: one commit on `fix/sort-property-argument` of
+https://github.com/nmfisher/liquify (based on upstream `4e4d2e9`),
+intended as a second PR independent of the bracket-access fix.
+
 ## Upstream PR status
 
-The same diff is intended for a PR to kingwill101/liquify. It currently
-lives on the `fix/variable-key-bracket-access` branch of
+The bracket-access diff is intended for a PR to kingwill101/liquify. It
+currently lives on the `fix/variable-key-bracket-access` branch of
 https://github.com/nmfisher/liquify
 ([PR #1](https://github.com/nmfisher/liquify/pull/1) opens it against that
 repo's master; the same branch can be pointed at kingwill101/liquify in a
@@ -64,8 +90,10 @@ those tests.
 
 ## Verification at vendor time
 
-- liquify's own suite (vendored + patched): **744 passed / 0 failed**
-  (740 upstream + 4 new regression tests in `test/issues_test.dart`).
+- liquify's own suite (vendored + patched): **745 passed / 0 failed**
+  (740 upstream + 1 property-sort test; 78 skipped as before). The
+  bracket-access patch carries its 4 regression tests in
+  `test/issues_test.dart`.
 - blog_builder suite: 145 passed / 0 failed (6 of them in
   `test/liquify_repro_test.dart` covering bracket access).
 - `dart analyze`: clean on both packages.

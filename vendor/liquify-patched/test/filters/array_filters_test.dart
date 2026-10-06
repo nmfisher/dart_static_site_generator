@@ -92,6 +92,54 @@ void main() {
       expect(sort('not a list', [], {}), equals('not a list'));
     });
 
+    test('sort with property argument (Shopify Liquid)', () {
+      expect(
+        sort([
+          {'priority': 3, 'title': 'c'},
+          {'priority': 1, 'title': 'a'},
+          {'priority': 2, 'title': 'b'},
+        ], ['priority'], {}),
+        equals([
+          {'priority': 1, 'title': 'a'},
+          {'priority': 2, 'title': 'b'},
+          {'priority': 3, 'title': 'c'},
+        ]),
+      );
+      // Missing / nil properties sort last (nil_safe_compare semantics).
+      expect(
+        sort([
+          {'title': 'no-prop'},
+          {'priority': 1, 'title': 'a'},
+        ], ['priority'], {}),
+        equals([
+          {'priority': 1, 'title': 'a'},
+          {'title': 'no-prop'},
+        ]),
+      );
+      // Numeric comparison, not lexicographic (2 < 10).
+      expect(
+        sort([
+          {'n': 10},
+          {'n': 2},
+        ], ['n'], {}),
+        equals([
+          {'n': 2},
+          {'n': 10},
+        ]),
+      );
+      // Non-numeric values compare as strings.
+      expect(
+        sort([
+          {'v': 'banana'},
+          {'v': 'apple'},
+        ], ['v'], {}),
+        equals([
+          {'v': 'apple'},
+          {'v': 'banana'},
+        ]),
+      );
+    });
+
     test('map', () {
       var input = [
         {'name': 'Alice'},

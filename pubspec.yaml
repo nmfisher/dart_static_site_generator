@@ -24,11 +24,13 @@ dependencies:
   liquify: ^1.6.1
   file: ^7.0.0
 
-# Vendored liquify with variable/expression keys in bracket access
-# (Shopify Liquid allows `hash[expr]`; 1.6.1 only parses literal keys).
-# Pending upstream PR; remove once a release includes it.
-# See vendor/liquify-patched/README.upstream.md and
-# vendor/liquify-patched/variable-key-bracket-access.patch
+# Vendored liquify with two local patches. Remove the dependency_overrides
+# entry once a release includes both:
+# 1. variable/expression keys in bracket access (Shopify allows hash[expr];
+#    1.6.1 only parses literal keys)
+# 2. sort by a named property (Shopify allows sort: "prop"; 1.6.1 ignores
+#    the argument and List.sort()s the raw elements, which throws on maps)
+# See vendor/liquify-patched/README.upstream.md and the two .patch files.
 dependency_overrides:
   liquify:
     path: vendor/liquify-patched

@@ -1,0 +1,104 @@
+diff --git a/pkgs/liquify/lib/src/filters/array.dart b/pkgs/liquify/lib/src/filters/array.dart
+index 2f0f23d..218a5c2 100644
+--- a/pkgs/liquify/lib/src/filters/array.dart
++++ b/pkgs/liquify/lib/src/filters/array.dart
+@@ -128,9 +128,12 @@ dynamic size(
+ 
+ /// Sorts the elements of a list.
+ ///
+-/// Arguments: None
++/// Arguments:
++/// - None, or a property name (Shopify Liquid's `sort: "property"` form).
+ ///
+-/// Example: {{ [3, 1, 2] | sort }} => [1, 2, 3]
++/// Examples:
++/// {{ [3, 1, 2] | sort }} => [1, 2, 3]
++/// {{ pages | sort: "priority" }} => pages ordered by their priority value
+ dynamic sort(
+   dynamic value,
+   List<dynamic> arguments,
+@@ -138,7 +141,24 @@ dynamic sort(
+ ) {
+   if (value is! List) return value;
+   final sorted = List.from(value);
+-  sorted.sort();
++  if (arguments.isEmpty) {
++    sorted.sort();
++    return sorted;
++  }
++  final property = arguments[0].toString();
++  int compare(dynamic a, dynamic b) {
++    final aVal = a is Map ? a[property] : null;
++    final bVal = b is Map ? b[property] : null;
++    // Shopify Liquid's nil_safe_compare: nil sorts after any value.
++    if (aVal == null || bVal == null) {
++      if (aVal == null && bVal == null) return 0;
++      return aVal == null ? 1 : -1;
++    }
++    if (aVal is num && bVal is num) return aVal.compareTo(bVal);
++    return aVal.toString().compareTo(bVal.toString());
++  }
++
++  sorted.sort(compare);
+   return sorted;
+ }
+ 
+diff --git a/pkgs/liquify/test/filters/array_filters_test.dart b/pkgs/liquify/test/filters/array_filters_test.dart
+index b692d26..9c6ec48 100644
+--- a/pkgs/liquify/test/filters/array_filters_test.dart
++++ b/pkgs/liquify/test/filters/array_filters_test.dart
+@@ -92,6 +92,54 @@ void main() {
+       expect(sort('not a list', [], {}), equals('not a list'));
+     });
+ 
++    test('sort with property argument (Shopify Liquid)', () {
++      expect(
++        sort([
++          {'priority': 3, 'title': 'c'},
++          {'priority': 1, 'title': 'a'},
++          {'priority': 2, 'title': 'b'},
++        ], ['priority'], {}),
++        equals([
++          {'priority': 1, 'title': 'a'},
++          {'priority': 2, 'title': 'b'},
++          {'priority': 3, 'title': 'c'},
++        ]),
++      );
++      // Missing / nil properties sort last (nil_safe_compare semantics).
++      expect(
++        sort([
++          {'title': 'no-prop'},
++          {'priority': 1, 'title': 'a'},
++        ], ['priority'], {}),
++        equals([
++          {'priority': 1, 'title': 'a'},
++          {'title': 'no-prop'},
++        ]),
++      );
++      // Numeric comparison, not lexicographic (2 < 10).
++      expect(
++        sort([
++          {'n': 10},
++          {'n': 2},
++        ], ['n'], {}),
++        equals([
++          {'n': 2},
++          {'n': 10},
++        ]),
++      );
++      // Non-numeric values compare as strings.
++      expect(
++        sort([
++          {'v': 'banana'},
++          {'v': 'apple'},
++        ], ['v'], {}),
++        equals([
++          {'v': 'apple'},
++          {'v': 'banana'},
++        ]),
++      );
++    });
++
+     test('map', () {
+       var input = [
+         {'name': 'Alice'},

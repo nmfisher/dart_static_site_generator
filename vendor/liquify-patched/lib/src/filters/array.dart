@@ -128,9 +128,12 @@ dynamic size(
 
 /// Sorts the elements of a list.
 ///
-/// Arguments: None
+/// Arguments:
+/// - None, or a property name (Shopify Liquid's `sort: "property"` form).
 ///
-/// Example: {{ [3, 1, 2] | sort }} => [1, 2, 3]
+/// Examples:
+/// {{ [3, 1, 2] | sort }} => [1, 2, 3]
+/// {{ pages | sort: "priority" }} => pages ordered by their priority value
 dynamic sort(
   dynamic value,
   List<dynamic> arguments,
@@ -138,7 +141,24 @@ dynamic sort(
 ) {
   if (value is! List) return value;
   final sorted = List.from(value);
-  sorted.sort();
+  if (arguments.isEmpty) {
+    sorted.sort();
+    return sorted;
+  }
+  final property = arguments[0].toString();
+  int compare(dynamic a, dynamic b) {
+    final aVal = a is Map ? a[property] : null;
+    final bVal = b is Map ? b[property] : null;
+    // Shopify Liquid's nil_safe_compare: nil sorts after any value.
+    if (aVal == null || bVal == null) {
+      if (aVal == null && bVal == null) return 0;
+      return aVal == null ? 1 : -1;
+    }
+    if (aVal is num && bVal is num) return aVal.compareTo(bVal);
+    return aVal.toString().compareTo(bVal.toString());
+  }
+
+  sorted.sort(compare);
   return sorted;
 }
 
