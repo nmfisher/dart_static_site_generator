@@ -11,6 +11,8 @@ class SitemapGenerator {
     await _generateInternal(
         pages
             .where((p) => !p.draft) // Only include non-draft pages
+            .where((p) =>
+                !_isNotFoundRoute(p.route)) // Error pages aren't crawlable
             .map((p) => _SitemapEntry(
                 loc: "${host.replaceFirst(RegExp(r'/+$'), '')}${p.route}",
                 lastmod: p.date ?? DateTime.now(), // Use page date or fallback
@@ -20,6 +22,13 @@ class SitemapGenerator {
         outFile,
         fileSystem);
   }
+
+  /// Not-found pages (route `/404`, or `/<locale>/404` under per-locale
+  /// builds) are error responses, not crawlable content.
+  static bool _isNotFoundRoute(String route) =>
+      _notFoundPattern.hasMatch(route);
+
+  static final RegExp _notFoundPattern = RegExp(r'(?:^|/)404/?$');
 
   // Internal generation logic
   static Future<void> _generateInternal(List<_SitemapEntry> entries,
