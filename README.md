@@ -195,6 +195,22 @@ The default layout includes canonical, description, Open Graph, and Twitter tags
 Custom layouts can render the SEO partial explicitly. Set `baseUrl` for absolute
 canonical URLs, RSS, and a sitemap.
 
+Exclude a page from the sitemap with a boolean in its Markdown frontmatter:
+
+```yaml
+---
+title: Admin login
+published: true
+sitemap: false
+---
+```
+
+The page is still built and accessible at its usual URL. Omitted pages are also
+removed from other pages' sitemap `xhtml:link` alternates. The default is
+`sitemap: true`; mark each translation separately. Drafts and `/404` pages remain
+excluded automatically. This setting only controls the sitemap; use a robots
+`noindex` meta tag or `X-Robots-Tag` header to keep a page out of search results.
+
 ## Markdown and search
 
 Fenced code blocks with a recognized language receive syntax highlighting;

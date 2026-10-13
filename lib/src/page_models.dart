@@ -87,6 +87,8 @@ class PageModel {
     DateTime? date;
     if (doc['published'] != null && doc['published'] is! bool)
       throw FormatException('published must be a boolean in $filePath');
+    if (doc['sitemap'] != null && doc['sitemap'] is! bool)
+      throw FormatException('sitemap must be a boolean in $filePath');
     for (final field in ['tags', 'categories']) {
       if (doc[field] != null &&
           doc[field] is! String &&

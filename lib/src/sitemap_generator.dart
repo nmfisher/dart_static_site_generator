@@ -5,23 +5,48 @@ import 'package:xml/xml.dart';
 
 class SitemapGenerator {
   // Example alternative: Generate using PageModel objects
-  static Future<void> generateFromPageModels(List<PageModel> pages, String host,
-      {required String outFile,
-      FileSystem fileSystem = const LocalFileSystem()}) async {
+  static Future<void> generateFromPageModels(
+    List<PageModel> pages,
+    String host, {
+    required String outFile,
+    FileSystem fileSystem = const LocalFileSystem(),
+  }) async {
+    // Omitted pages must not be advertised through another locale's links.
+    final excludedUrls = {
+      for (final page in pages)
+        if (!_includePage(page)) _normalizeUrl(_absoluteUrl(host, page.route)),
+    };
     await _generateInternal(
-        pages
-            .where((p) => !p.draft) // Only include non-draft pages
-            .where((p) =>
-                !_isNotFoundRoute(p.route)) // Error pages aren't crawlable
-            .map((p) => _SitemapEntry(
-                loc: "${host.replaceFirst(RegExp(r'/+$'), '')}${p.route}",
-                lastmod: p.date ?? DateTime.now(), // Use page date or fallback
-                priority: _calculatePriority(p.route),
-                alternates: p.alternatesMap(host)))
-            .toList(),
-        outFile,
-        fileSystem);
+      pages
+          .where(_includePage)
+          .map(
+            (page) => _SitemapEntry(
+              loc: _absoluteUrl(host, page.route),
+              lastmod: page.date ?? DateTime.now(),
+              priority: _calculatePriority(page.route),
+              alternates: {
+                for (final alternate in page.alternatesMap(host).entries)
+                  if (!excludedUrls.contains(_normalizeUrl(alternate.value)))
+                    alternate.key: alternate.value,
+              },
+            ),
+          )
+          .toList(),
+      outFile,
+      fileSystem,
+    );
   }
+
+  static bool _includePage(PageModel page) =>
+      !page.draft &&
+      !_isNotFoundRoute(page.route) &&
+      page.extras['sitemap'] != false;
+
+  static String _absoluteUrl(String host, String route) =>
+      "${host.replaceFirst(RegExp(r'/+$'), '')}$route";
+
+  static String _normalizeUrl(String url) =>
+      url.replaceFirst(RegExp(r'/+$'), '');
 
   /// Not-found pages (route `/404`, or `/<locale>/404` under per-locale
   /// builds) are error responses, not crawlable content.
