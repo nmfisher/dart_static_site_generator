@@ -106,8 +106,8 @@ collections:
     await builder.build();
     final archive = output('projects/index.html');
     expect(archive, contains('My projects'));
-    expect(archive.indexOf('href="/docs/projects/a"'),
-        lessThan(archive.indexOf('href="/docs/projects/b"')));
+    expect(archive.indexOf('href="/docs/projects/a/"'),
+        lessThan(archive.indexOf('href="/docs/projects/b/"')));
     expect(archive, contains('/docs/projects/page/2'));
     expect(output('projects/page/2/index.html'), contains('projects/c'));
     expect(output('tags/dart/page/2/index.html'), contains('projects/c'));

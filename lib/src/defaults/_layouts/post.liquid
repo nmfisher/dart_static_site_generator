@@ -23,8 +23,8 @@
     </article>
 
     <nav class="post-navigation" aria-label="Post navigation">
-    {% if page.previous %}<a rel="prev" href="{{ page.previous.route | relative_url }}">← {{ page.previous.title | escape }}</a>{% endif %}
-    {% if page.next %}<a rel="next" href="{{ page.next.route | relative_url }}">{{ page.next.title | escape }} →</a>{% endif %}
+    {% if page.previous %}<a rel="prev" href="{{ page.previous.route | page_url }}">← {{ page.previous.title | escape }}</a>{% endif %}
+    {% if page.next %}<a rel="next" href="{{ page.next.route | page_url }}">{{ page.next.title | escape }} →</a>{% endif %}
     </nav>
     {% render '_includes/comments.liquid', site: site, page: page %}
 {% endblock %}

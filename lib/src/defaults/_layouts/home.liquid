@@ -11,7 +11,7 @@
         <ul class="post-list">
             {% for post in site.posts.all %}
                 <li class="post-list-item">
-                    <h3><a href="{{ post.route }}">{{ post.title }}</a></h3>
+                    <h3><a href="{{ post.route | page_url }}">{{ post.title }}</a></h3>
                     {% if post.date %}
                         <p class="post-meta">
                             <time datetime="{{ post.formatted_date }}">

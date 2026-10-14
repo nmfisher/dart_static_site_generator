@@ -16,7 +16,7 @@
         <ul class="list-items">
             {% for child_page in page.children %}
                 <li class="list-item">
-                    <h2><a href="{{ child_page.route }}">{{ child_page.title }}</a></h2>
+                    <h2><a href="{{ child_page.route | page_url }}">{{ child_page.title }}</a></h2>
                     {% if child_page.date %}
                         <p class="item-meta">
                             <time datetime="{{ child_page.formatted_date }}">
@@ -27,7 +27,7 @@
                     {% if child_page.blurb %}
                         <p class="item-blurb">{{ child_page.blurb | escape }}</p>
                     {% endif %}
-                     <p><a href="{{ child_page.route }}" class="read-more">Read More →</a></p>
+                     <p><a href="{{ child_page.route | page_url }}" class="read-more">Read More →</a></p>
                 </li>
             {% else %}
                 <li>No items found.</li>

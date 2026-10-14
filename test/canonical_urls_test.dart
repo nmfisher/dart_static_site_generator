@@ -42,6 +42,10 @@ void main() {
             '---\ntitle: Home\npublished: true\n---\nHome');
         write('/site/content/${locale}privacy.md',
             "---\ntitle: Privacy\npublished: true\n---\n<a id=\"canonical-nav\" href=\"{{ page.route | page_url }}\">Privacy</a>");
+        write('/site/content/${locale}posts/release.md',
+            '---\ntitle: Release\ndate: 2026-01-01\npublished: true\n---\nRelease');
+        write('/site/content/${locale}posts/index.md',
+            '---\ntitle: Releases\nlayout: list\npublished: true\n---\nReleases');
       }
       final builder = StaticSiteBuilder(
           inputDir: '/site',
@@ -57,7 +61,16 @@ void main() {
             .findAllElements('loc')
             .map((node) => node.innerText)
             .toSet();
-        for (final route in ['/', '/privacy', '/zh', '/zh/privacy']) {
+        for (final route in [
+          '/',
+          '/privacy',
+          '/posts',
+          '/posts/release',
+          '/zh',
+          '/zh/privacy',
+          '/zh/posts',
+          '/zh/posts/release'
+        ]) {
           final path =
               route == '/' ? '/out/index.html' : '/out$route/index.html';
           final page = html.parse(fs.file(path).readAsStringSync());
@@ -71,6 +84,15 @@ void main() {
           }
           for (final alternate in page.querySelectorAll('link[hreflang]')) {
             expect(locations, contains(alternate.attributes['href']));
+          }
+          for (final anchor in page.querySelectorAll('a[href]')) {
+            final link = anchor.attributes['href']!;
+            if (link.startsWith('/') && !link.startsWith('//')) {
+              final target = 'https://example.com${Uri.parse(link).path}';
+              if (locations.contains(target + '/')) {
+                fail('Noncanonical navigation URL: $link');
+              }
+            }
           }
         }
         for (final alternate in sitemap.findAllElements('xhtml:link')) {

@@ -319,7 +319,7 @@ Content of Post A.
       expect(
           testFs.readOutputFile('posts/index.html'),
           contains(
-              '<h2><a href="/posts/post-a">Post A</a></h2>')); // Link to child
+              '<h2><a href="/posts/post-a/">Post A</a></h2>')); // Link to child
       expect(testFs.readOutputFile('posts/index.html'),
           contains('<article class="page-list">')); // From list layout
 
