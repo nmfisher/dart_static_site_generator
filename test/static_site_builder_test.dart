@@ -338,9 +338,9 @@ Content of Post A.
       expect(
           testFs.readOutputFile('sitemap.xml'),
           contains(
-              '<loc>http://build.test/posts/post-a</loc>')); // Post page URL
+              '<loc>http://build.test/posts/post-a/</loc>')); // Post page URL
       expect(testFs.readOutputFile('sitemap.xml'),
-          contains('<loc>http://build.test/posts</loc>')); // Index page URL
+          contains('<loc>http://build.test/posts/</loc>')); // Index page URL
     });
   });
 }

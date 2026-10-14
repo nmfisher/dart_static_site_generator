@@ -31,6 +31,19 @@ class SiteUrls {
     return baseUrl!.resolve(local).toString();
   }
 
+  /// Generated pages are directory indexes with exactly one trailing slash.
+  /// Keep the root and locale roots consistent with page metadata and sitemaps.
+  static String pagePath(String route) {
+    final uri = Uri.parse(route);
+    final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    return uri.replace(path: '$path/').toString();
+  }
+
+  String pageUrl(dynamic route) => relative(pagePath(route?.toString() ?? '/'));
+
+  String canonical(dynamic route) =>
+      absolute(pagePath(route?.toString() ?? '/'));
+
   String? unmount(String path) {
     if (basePath.isEmpty) return path;
     if (path == basePath) return '/';

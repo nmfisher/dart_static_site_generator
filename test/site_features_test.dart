@@ -163,7 +163,8 @@ collections:
         '/docs/assets/pic.png 1x, /docs/assets/pic.png 2x');
     expect(doc.querySelector('b')!.text, 'https://example.com/docs/one/');
     expect(output('feed.xml'), contains('https://example.com/docs/one/'));
-    expect(output('sitemap.xml'), contains('https://example.com/docs/one'));
+    expect(output('sitemap.xml'),
+        contains('<loc>https://example.com/docs/one/</loc>'));
     expect(output('one/index.html'), isNot(contains('/docs/docs/')));
     expect(await builder.check(), isEmpty);
   });

@@ -394,7 +394,7 @@ class StaticSiteBuilder {
       // Trailing-slash form to match canonical URLs in output.
       final alternates = {
         for (final entry in variants.entries)
-          entry.key: entry.value == '/' ? '/' : '${entry.value}/',
+          entry.key: SiteUrls.pagePath(entry.value),
       };
       pages[i] =
           page.copyWith(extras: {...page.extras, 'alternates': alternates});

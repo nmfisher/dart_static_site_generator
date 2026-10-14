@@ -16,7 +16,8 @@ void main() {
     String route, {
     bool draft = false,
     Map<String, dynamic> extras = const {},
-  }) => PageModel.fromMap({'route': route, 'draft': draft, 'extras': extras});
+  }) =>
+      PageModel.fromMap({'route': route, 'draft': draft, 'extras': extras});
 
   setUp(() => fs = MemoryFileSystem());
 
@@ -44,8 +45,8 @@ void main() {
         document.findAllElements('loc').map((node) => node.innerText).toList(),
         [
           'https://example.com/',
-          'https://example.com/guide',
-          'https://example.com/404-guide',
+          'https://example.com/guide/',
+          'https://example.com/404-guide/',
         ],
       );
     },
@@ -123,8 +124,8 @@ void main() {
         expect(
           urls,
           containsAll([
-            'https://example.com/guide',
-            'https://example.com/zh/guide',
+            'https://example.com/guide/',
+            'https://example.com/zh/guide/',
           ]),
         );
         expect(document.toXmlString(), isNot(contains('/admin')));

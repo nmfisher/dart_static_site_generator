@@ -174,10 +174,11 @@ layout. Layout HTML itself is not processed as Markdown.
 | `page.canonical_url`, `page.seo` | Canonical URL and social metadata |
 | `page.formatted_date`, `page.long_date` | Preformatted date strings |
 
-Use `relative_url` for mounted paths and `absolute_url` for full URLs:
+Use `page_url` for page links with a trailing slash, `relative_url` for mounted
+asset paths, and `absolute_url` for full URLs:
 
 ```liquid
-<a href="{{ page.route | relative_url }}">{{ page.title | escape }}</a>
+<a href="{{ page.route | page_url }}">{{ page.title | escape }}</a>
 {{ '/assets/cover.png' | absolute_url }}
 {% render '_includes/seo.liquid', page: page, site: site %}
 ```
@@ -192,6 +193,10 @@ URLs include the base path. Files still live directly in the output directory;
 serve or deploy that directory at the configured mount point.
 
 The default layout includes canonical, description, Open Graph, and Twitter tags.
+Custom head templates should also output
+`<link rel="canonical" href="{{ page.canonical_url | escape }}">`.
+Canonical URLs, sitemap entries, and language alternates use the same trailing
+slash format, including the site root and translated locale roots.
 Custom layouts can render the SEO partial explicitly. Set `baseUrl` for absolute
 canonical URLs, RSS, and a sitemap.
 

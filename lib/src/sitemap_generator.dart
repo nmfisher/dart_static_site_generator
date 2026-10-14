@@ -11,22 +11,23 @@ class SitemapGenerator {
     required String outFile,
     FileSystem fileSystem = const LocalFileSystem(),
   }) async {
+    final urls = SiteUrls(ConfigModel(baseUrl: host, metadata: const {}));
     // Omitted pages must not be advertised through another locale's links.
     final excludedUrls = {
       for (final page in pages)
-        if (!_includePage(page)) _normalizeUrl(_absoluteUrl(host, page.route)),
+        if (!_includePage(page)) urls.canonical(page.route),
     };
     await _generateInternal(
       pages
           .where(_includePage)
           .map(
             (page) => _SitemapEntry(
-              loc: _absoluteUrl(host, page.route),
+              loc: urls.canonical(page.route),
               lastmod: page.date ?? DateTime.now(),
               priority: _calculatePriority(page.route),
               alternates: {
-                for (final alternate in page.alternatesMap(host).entries)
-                  if (!excludedUrls.contains(_normalizeUrl(alternate.value)))
+                for (final alternate in _alternates(page, urls).entries)
+                  if (!excludedUrls.contains(alternate.value))
                     alternate.key: alternate.value,
               },
             ),
@@ -42,11 +43,14 @@ class SitemapGenerator {
       !_isNotFoundRoute(page.route) &&
       page.extras['sitemap'] != false;
 
-  static String _absoluteUrl(String host, String route) =>
-      "${host.replaceFirst(RegExp(r'/+$'), '')}$route";
-
-  static String _normalizeUrl(String url) =>
-      url.replaceFirst(RegExp(r'/+$'), '');
+  static Map<String, String> _alternates(PageModel page, SiteUrls urls) {
+    final raw = page.extras['alternates'];
+    if (raw is! Map) return const {};
+    return {
+      for (final entry in raw.entries)
+        entry.key.toString(): urls.canonical(entry.value),
+    };
+  }
 
   /// Not-found pages (route `/404`, or `/<locale>/404` under per-locale
   /// builds) are error responses, not crawlable content.
@@ -63,8 +67,7 @@ class SitemapGenerator {
       [
         XmlAttribute(
             XmlName('xmlns'), 'http://www.sitemaps.org/schemas/sitemap/0.9'),
-        XmlAttribute(
-            XmlName('xmlns:xhtml'), 'http://www.w3.org/1999/xhtml'),
+        XmlAttribute(XmlName('xmlns:xhtml'), 'http://www.w3.org/1999/xhtml'),
         XmlAttribute(
             XmlName('xmlns:xsi'), 'http://www.w3.org/2001/XMLSchema-instance'),
         XmlAttribute(XmlName('xsi:schemaLocation'),

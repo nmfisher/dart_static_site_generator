@@ -180,7 +180,7 @@ void main() {
             .findAllElements('loc')
             .single
             .innerText,
-        'https://example.com/post');
+        'https://example.com/post/');
     fs.directory('/bad.xml').createSync();
     await expectLater(
         SitemapGenerator.generateFromPageModels([page], 'https://example.com',

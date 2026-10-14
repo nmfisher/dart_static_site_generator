@@ -25,6 +25,10 @@ class TemplateRenderer {
           'absolute_url',
           (value, args, named) =>
               (Zone.current[_urlsZone] as SiteUrls).absolute(value));
+      FilterRegistry.register(
+          'page_url',
+          (value, args, named) =>
+              (Zone.current[_urlsZone] as SiteUrls).pageUrl(value));
       _filtersRegistered = true;
     }
   }
@@ -52,8 +56,7 @@ class TemplateRenderer {
       'site': {...site.toLiquidMap(locale: page.locale), ...config.toMap()},
       'page': {
         ...page.toMap(),
-        'canonical_url':
-            urls.absolute(page.route == '/' ? '/' : '${page.route}/'),
+        'canonical_url': urls.canonical(page.route),
         'seo': {
           'title': page.metadata['og:title'] ?? page.title,
           'description': description,
